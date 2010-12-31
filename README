@@ -1,0 +1,5 @@
+A tool that "installs" files from a directory and then helps removing them all.
+
+As its name says, (currently) it's not very smart, but it does the job.
+Execute it without any parameters to see more info and help!
+
