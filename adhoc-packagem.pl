@@ -74,7 +74,7 @@ if ($^O ne "linux") {
 		$inst = 1;
 		$root = shift || "/"; # yeah, also for empty string
 		unless (defined $_source) {
-			say "Error: you didn't provide source dir.\n";
+			say "Error: you didn't provide a source dir.\n";
 			usage;
 			exit EXIT_WRARG;
 		}
@@ -88,7 +88,7 @@ if ($^O ne "linux") {
 	elsif ($oper eq "rm") {
 		$inst = 0;
 		unless (defined $_source) {
-			say "Error: you didn't a .$ext file.\n";
+			say "Error: you didn't provide a .$ext file.\n";
 			usage;
 			exit EXIT_WRARG;
 		}
@@ -130,7 +130,7 @@ sub do_inst {
 	}
 	if ($source =~ /(.+?)\/+$/) { $source = $1 } # rstrip /s
 	if ($root =~ /(.+?)\/+$/) { $root = $1 } # rstrip /s
-	$root .= '/' unless $root eq '/'; # and pretend one
+	$root .= '/' unless $root eq '/'; # and prepend one
 	if (! -d $source) {
 		say "Error, source doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT;
