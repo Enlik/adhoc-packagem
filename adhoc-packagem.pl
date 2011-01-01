@@ -7,6 +7,13 @@ use File::Find;
 use File::Copy;
 use Cwd;
 
+use constant {
+	EXIT_OK => 0,
+	EXIT_WRARG => 1,
+	EXIT_CANTCONT => 2, # can't continue - unsupported OS or some other initial checks failed
+	EXIT_ERRPROC => 3 # error during processing files
+};
+
 my $ext = "insfiles";
 sub help {
 	say "\"Ad hoc package manager\": this installs files from a source to \"root\" directory (/ by default)";
@@ -38,7 +45,7 @@ if ($^O ne "linux") {
 	say "Sorry, your OS may not be supported.";
 	say "If it has Linux-like path naming convension, remove this check";
 	say "(you probably have a BSD or so, so you know how ;).)";
-	exit 1;
+	exit EXIT_CANTCONT;
 }
 
 {
@@ -50,7 +57,7 @@ if ($^O ne "linux") {
 			say "Error: you didn't provide source dir.";
 			say "";
 			help;
-			exit 1;
+			exit EXIT_WRARG;
 		}
 		$source = $_source;
 		$root = $_root // "/";
@@ -61,7 +68,7 @@ if ($^O ne "linux") {
 			say "Error: you didn't provide a .$ext file.";
 			say "";
 			help;
-			exit 1;
+			exit EXIT_WRARG;
 		}
 		$source = $_source;
 		$root = $_root // "/";
@@ -70,7 +77,7 @@ if ($^O ne "linux") {
 		say "Error: incorrect args.";
 		say "";
 		help;
-		exit 1;
+		exit EXIT_WRARG;
 	}
 }
 
@@ -94,11 +101,11 @@ sub do_inst {
 	$root .= '/' unless $root eq '/'; # and prepend one
 	if (! -d $source) {
 		say "Error, source doesn't exist or is not a dir.";
-		exit 2;
+		exit EXIT_CANTCONT;
 	}
 	if (! -d $root) {
 		say "Error, destination $root doesn't exist or is not a dir.";
-		exit 2;
+		exit EXIT_CANTCONT;
 	}
 	say "info: source is: $source";
 	say "info: destination is: $root";
@@ -106,7 +113,7 @@ sub do_inst {
 	if (-f $ff) {
 		say "Error, file $ff already exists.";
 		say "Have you already installed somewhere the files?";
-		exit 2;
+		exit EXIT_CANTCONT;
 	} 
 	else {
 		say ".$ext file is: $ff";
@@ -116,7 +123,7 @@ sub do_inst {
 	
 	unless (open ($ff_fh, ">", $ff)) {
 		say "Error, can't open .$ext file for writing.";
-		exit 2;
+		exit EXIT_CANTCONT;
 	}
 	
 	say $ff_fh "# $0";
@@ -124,10 +131,10 @@ sub do_inst {
 	say $ff_fh "# $source -> $root";
 	say $ff_fh "VERSION 1";
 	say $ff_fh "ROOTDIR $root";
-	find (\&process_file, $source) or exit 3;
+	find (\&process_file, $source) or exit EXIT_CANTCONT;
 	close $ff_fh;
 	say "\nDone. Remember to backup the file $ff.";
-	exit 0;
+	exit EXIT_OK;
 }
 
 sub process_file {
@@ -141,7 +148,7 @@ sub process_file {
 	# say "**** cwd: " . Cwd::getcwd;say "p $path\nf $file\nd $dir\ndst $dst_path";
 	if ($path eq $source) {
 		say "The source and destination are the same, aborting.";
-		exit 2;
+		exit EXIT_CANTCONT;
 	}
 	$_path_without_source = substr $path,(length ($source)+1);
 	$dst_path = $root . $_path_without_source;
@@ -155,7 +162,7 @@ sub process_file {
 			say "Aborting!";
 			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
 			close $ff_fh;
-			exit 3; # with File::Find one can't abort find() it seems :/
+			exit EXIT_ERRPROC; # with File::Find one can't abort find() it seems :/
 		}
 		else {
 			unless (mkdir $dst_path) {
@@ -163,7 +170,7 @@ sub process_file {
 				say $!;
 				say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
 				close $ff_fh;
-				exit 3;
+				exit EXIT_ERRPROC;
 			}
 			say $ff_fh "NEWDIR $dst_path";
 		}
@@ -174,7 +181,7 @@ sub process_file {
 			say "but source file is not a directory. Aborting!";
 			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
 			close $ff_fh;
-			exit 3;
+			exit EXIT_ERRPROC;
 		}
 		elsif (-e _) {
 			# let's yell a bit
@@ -182,7 +189,7 @@ sub process_file {
 			say "I'm not going to overwrite it. Aborting!";
 			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
 			close $ff_fh;
-			exit 3;
+			exit EXIT_ERRPROC;
 		}
 		else {
 			# Do it!
@@ -191,7 +198,7 @@ sub process_file {
 				say $!;
 				say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
 				close $ff_fh;
-				exit 3;
+				exit EXIT_ERRPROC;
 			}
 			say $ff_fh "NEWFILE $dst_path";
 		}
@@ -203,11 +210,11 @@ sub process_file {
 sub do_rm {
 	unless ($source =~ /.+\.\Q$ext\E$/) {
 		say "The file should end with .$ext.";
-		exit 1;
+		exit EXIT_WRARG;
 	}
 	unless (open $ff_fh, "<", $source) {
 		say "I can't open $source for reading: $!.";
-		exit 3;
+		exit EXIT_CANTCONT;
 	}
 	my @opers; # $opers[n] = { oper => NEW...,  path => ... }
 	my $version;
@@ -224,7 +231,7 @@ sub do_rm {
 				say "Error, wrong version! Maybe you have old tool?";
 				say "Only file with VERSION 1 are supported.";
 				say "$_ at line $line";
-				exit 3;
+				exit EXIT_ERRPROC;
 			}
 		}
 		elsif ($_ =~ /^(NEWFILE|NEWDIR) (.+)/) {
@@ -232,7 +239,7 @@ sub do_rm {
 				say "Error, no VERSION specified.";
 				say "There should be a line VERSION (version).";
 				say "at line $line";
-				exit 3;
+				exit EXIT_ERRPROC;
 			}
 			push @opers, { oper => $1, path => $2 };
 		}
@@ -242,7 +249,7 @@ sub do_rm {
 		else {
 			say "Parse error at line $line.";
 			say "Wrong line is: $_.";
-			exit 3;
+			exit EXIT_ERRPROC;
 		}
 	}
 	
