@@ -15,6 +15,17 @@ use constant {
 };
 
 my $ext = "insfiles";
+sub usage {
+	my $ishelp = shift;
+	say "args: inst [-p] source_dir [root_path]";
+	say "or: rm [-p] anything.$ext [root_path]";
+	say "or: [-h|--help]";
+	say "example:\t$0 inst stuff";
+	say "example 2:\t$0 rm stuff.$ext";
+	say "example with -p (pretend) and another root path: $0 inst -p stuff /usr/local";
+	say "\nUse --help to get some more info." unless defined $ishelp;
+}
+
 sub help {
 	say "\"Ad hoc package manager\": this installs files from a source to \"root\" directory (/ by default)";
 	say "and helps uninstalling them";
@@ -24,19 +35,16 @@ sub help {
 	say "if a file exists, it's not overridden - copying is aborted";
 	say "*** and file modes are ignored ***";
 	say "";
-	say "In pretend mode no files are copied or removed, but with \"inst\"";
+	say "In pretend mode (-p) no files are copied or removed, but with \"inst\"";
 	say "command an .$ext file is written as it would be.";
-	say "";
-	say "args: inst [-p] source_dir [root_path]";
-	say "or: rm [-p] anything.$ext [root_path]";
-	say "example: $0 inst stuff";
-	say "example 2: $0 rm stuff.$ext";
-	say "example with -p (pretend): $0 inst -p stuff /usr/local";
 	say "";
 	say "warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination)";
+	say "";
 	# files with \n in name? `.', `' or anything wrong as src/dest? the same REAL src/dest?
 	say "\nauthor: Enlik";
+	say "";
+	usage 1;
 }
 
 my $inst; # 0 or 1
@@ -67,12 +75,12 @@ if ($^O ne "linux") {
 		$root = shift || "/"; # yeah, also for empty string
 		unless (defined $_source) {
 			say "Error: you didn't provide source dir.\n";
-			help;
+			usage;
 			exit EXIT_WRARG;
 		}
 		if(@ARGV) {
 			say "Error: too much parameters.\n";
-			help;
+			usage;
 			exit EXIT_WRARG;
 		}
 		$source = $_source;
@@ -81,12 +89,12 @@ if ($^O ne "linux") {
 		$inst = 0;
 		unless (defined $_source) {
 			say "Error: you didn't a .$ext file.\n";
-			help;
+			usage;
 			exit EXIT_WRARG;
 		}
 		if(@ARGV) {
 			say "Error: too much parameters.\n";
-			help;
+			usage;
 			exit EXIT_WRARG;
 		}
 		$source = $_source;
@@ -97,7 +105,7 @@ if ($^O ne "linux") {
 	}
 	else {
 		say "Error: incorrect args.\n";
-		help;
+		usage;
 		exit EXIT_WRARG;
 	}
 }
