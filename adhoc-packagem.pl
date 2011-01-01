@@ -24,18 +24,23 @@ sub help {
 	say "if a file exists, it's not overridden - copying is aborted";
 	say "*** and file modes are ignored ***";
 	say "";
-	say "args: inst source_dir [root_path]";
-	say "or: rm anything.$ext [root_path]";
+	say "In pretend mode no files are copied or removed, but with \"inst\"";
+	say "command an .$ext file is written as it would be.";
+	say "";
+	say "args: inst [-p] source_dir [root_path]";
+	say "or: rm [-p] anything.$ext [root_path]";
 	say "example: $0 inst stuff";
 	say "example 2: $0 rm stuff.$ext";
+	say "example with -p (pretend): $0 inst -p stuff /usr/local";
 	say "";
 	say "warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination)";
-	# files with \n in name? `.' or anything wrong as src/dest? the same REAL src/dest?
+	# files with \n in name? `.', `' or anything wrong as src/dest? the same REAL src/dest?
 	say "\nauthor: Enlik";
 }
 
 my $inst; # 0 or 1
+my $pretend = 0; # 0 or 1
 my $source;
 my $root; # absolute path, with a / at the end
 my $ff_fh;
@@ -49,38 +54,57 @@ if ($^O ne "linux") {
 }
 
 {
-	my ($oper, $_source, $_root) = @ARGV;
-	$oper //= "";
+	my ($oper, $_source);
+	$oper = shift // "";
+	$_source = shift;
+	if(defined $_source and $_source eq "-p") {
+		$pretend = 1;
+		$_source = shift;
+	}
+	
 	if ($oper eq "inst") {
 		$inst = 1;
-		unless (defined($_source)) {
-			say "Error: you didn't provide source dir.";
-			say "";
+		$root = shift || "/"; # yeah, also for empty string
+		unless (defined $_source) {
+			say "Error: you didn't provide source dir.\n";
+			help;
+			exit EXIT_WRARG;
+		}
+		if(@ARGV) {
+			say "Error: too much parameters.\n";
 			help;
 			exit EXIT_WRARG;
 		}
 		$source = $_source;
-		$root = $_root // "/";
 	}
 	elsif ($oper eq "rm") {
 		$inst = 0;
-		unless (defined($_source)) {
-			say "Error: you didn't provide a .$ext file.";
-			say "";
+		unless (defined $_source) {
+			say "Error: you didn't a .$ext file.\n";
+			help;
+			exit EXIT_WRARG;
+		}
+		if(@ARGV) {
+			say "Error: too much parameters.\n";
 			help;
 			exit EXIT_WRARG;
 		}
 		$source = $_source;
-		$root = $_root // "/";
+	}
+	elsif ($oper eq "-h" or $oper eq "--help") {
+		help;
+		exit EXIT_OK;
 	}
 	else {
-		say "Error: incorrect args.";
-		say "";
+		say "Error: incorrect args.\n";
 		help;
 		exit EXIT_WRARG;
 	}
 }
 
+if($pretend) {
+	say "Running in \"pretend\" mode.";
+}
 
 if ($inst) {
 	do_inst();
@@ -98,7 +122,7 @@ sub do_inst {
 	}
 	if ($source =~ /(.+?)\/+$/) { $source = $1 } # rstrip /s
 	if ($root =~ /(.+?)\/+$/) { $root = $1 } # rstrip /s
-	$root .= '/' unless $root eq '/'; # and prepend one
+	$root .= '/' unless $root eq '/'; # and pretend one
 	if (! -d $source) {
 		say "Error, source doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT;
@@ -165,12 +189,14 @@ sub process_file {
 			exit EXIT_ERRPROC; # with File::Find one can't abort find() it seems :/
 		}
 		else {
-			unless (mkdir $dst_path) {
-				say "Error! Can't create directory $dst_path - aborting!";
-				say $!;
-				say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
-				close $ff_fh;
-				exit EXIT_ERRPROC;
+			unless($pretend) {
+				unless (mkdir $dst_path) {
+					say "Error! Can't create directory $dst_path - aborting!";
+					say $!;
+					say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
+					close $ff_fh;
+					exit EXIT_ERRPROC;
+				}
 			}
 			say $ff_fh "NEWDIR $dst_path";
 		}
@@ -192,13 +218,15 @@ sub process_file {
 			exit EXIT_ERRPROC;
 		}
 		else {
-			# Do it!
-			unless (copy $file, $dst_path) {
-				say "Error! Can't copy file $path to $dst_path - aborting!";
-				say $!;
-				say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
-				close $ff_fh;
-				exit EXIT_ERRPROC;
+			unless ($pretend) {
+				# Do it!
+				unless (copy $file, $dst_path) {
+					say "Error! Can't copy file $path to $dst_path - aborting!";
+					say $!;
+					say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 rm $ff";
+					close $ff_fh;
+					exit EXIT_ERRPROC;
+				}
 			}
 			say $ff_fh "NEWFILE $dst_path";
 		}
@@ -253,20 +281,22 @@ sub do_rm {
 		}
 	}
 	
-	@opers = reverse @opers;
-	for (@opers) {
-		if ($_->{oper} eq 'NEWFILE') {
-			unless (unlink $_->{path}) {
-				say "Warning: can't remove file $_->{path}.";
-				say "\t$!";
+	unless($pretend) {
+		@opers = reverse @opers;
+		for (@opers) {
+			if ($_->{oper} eq 'NEWFILE') {
+				unless (unlink $_->{path}) {
+					say "Warning: can't remove file $_->{path}.";
+					say "\t$!";
+				}
 			}
-		}
-		elsif ($_->{oper} eq 'NEWDIR') {
-			unless (rmdir $_->{path}) {
-				say "Warning: can't remove directory $_->{path}.";
-				say "\t$!";
-				say "\tMaybe it wasn't empty because anything was added";
-				say "\tto it after using this tool.";
+			elsif ($_->{oper} eq 'NEWDIR') {
+				unless (rmdir $_->{path}) {
+					say "Warning: can't remove directory $_->{path}.";
+					say "\t$!";
+					say "\tMaybe it wasn't empty because anything was added";
+					say "\tto it after using this tool.";
+				}
 			}
 		}
 	}
