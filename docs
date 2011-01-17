@@ -1,0 +1,101 @@
+"Ad hoc package manager"
+
+adhoc-packagem.pl
+
+A Perl tool that "installs" files from a directory and then helps removing them all.
+
+PARAMETERS (see USAGE below, too)
+inst [-p] source_dir [-r root_path] [-file output]
+del [-p] input.insfile [-r root_path]
+-h
+--help
+
+PREFACE
+Currently it's not very smart, but it does the job.
+It does no proper check whether the source and destination paths are meaningful
+(for example it does not check if real path of source and destination are
+different:
+./adhoc-packagem.pl inst bla -r ./bla
+info: source is: bla
+info: destination is: /home/(some path here)adhoc-packagem/./bla/
+Error, file bla.insfiles already exists.
+Have you already installed the files somewhere?
+- like this).
+See also SPECIAL FILES and OTHER INFO for more details.
+
+USAGE
+Arguments must occur after source directory (inst) or .insfile (del).
+Argument -p is the only exception (inst source_dir -p is permitted too).
+
+* -h (or --help)
+Prints some blah - informations and usage. If you are reading this file you
+don't need this.
+
+* inst
+inst [-p] source_dir [-r root_path] [-file output]
+Copy files from source_dir to root_path, or / if root_path is not specified.
+Use -file output to speficy output .insfile (extension will be appended if necessary).
+Default .insfile is: root_path.insfile, for example /tmp/dir.insfile for /tmp/dir.
+
+* del
+del [-p] input.insfile [-r root_path]
+Reads input.insfile and removes files and non-empty directories in reversed order.
+If you specify -r root_path, it will be appended to all items. This could
+be useful if you work with chroots. Use -p to see what resulting paths would look
+like.
+Note: additional -file input2.insfile is permitted and will override input.insfile.
+
+If used multiple -file arg or -r arg, the last one will be used.
+
+PURPOSE
+It can be used when you want to copy directory with some app to /usr/local
+(or even /usr or /; the destination path "/" is the default) and then remove
+it easily.
+
+SPECIAL FILES
+A note about non-regular files on "inst". In general, they are not treated specially.
+Here's a note about two most common non-regular file types.
+Symbolic links are copied as regular files. If a symbolic links directs to place
+that doesn't exist, installing will abort.
+Fifo is tried to be read as fifo, and if it can't, the program will hang (you can
+echo something to it, though).
+Aborting it with ^C will give you incomplete (or empty) .insfile file.
+This will be fixed eventually.
+
+OTHER INFO
+* inst
+It tries to operate safely. If a file already exists it won't be overwritten
+(in such a case it'll abort - all changes can be undone with "del" command).
+It tries to change mode (writable, executable etc.) of created item to match the
+original one's mode. On success, tries to set the same UID and GID, too.
+If any of these two operations fail, a warning is issued, but the process
+is not aborted.
+Access or modification time of created item is set as-is (usually it will be
+"now").
+
+* del
+Currently it does not check if file was modified in any way after installing with
+this tool, and removes it when using "del" option anyway.
+When removing directories it uses the rmdir function, that will refuse to
+delete non-empty directory. It is good and intended! (A non-empty directory
+occurs if something was added to it after "installing" with this tool.)
+
+PRETEND MODE
+Pretend mode (-p) is a simple way to check of what would be done.
+* with "inst":
+- generates a .insfile,
+- checks if there are any conflicts ("If a file already exists it won't be
+overwritten" above),
+- does not check for permissions or another problems that can occur during copying;
+
+* with "del":
+- reads a .insfile (with normal check if it's OK),
+- writes what file (or maybe directory - see below) would be removed,
+- if such a file/directory does not exist anymore, tells user about it,
+- a non-empty directory would not be removed, but in this mode user won't be
+notified about this fact.
+
+The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
+Enlik, January 2011.
+
+End of file.
