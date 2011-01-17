@@ -62,7 +62,7 @@ my $pretend = 0; # 0 or 1
 my $source;
 my $root; # absolute path, with a / at the end
 my $ff_fh;
-my $ff; # output file
+my $ff; # .$ext file
 
 if ($^O ne "linux") {
 	say "Sorry, your OS may not be supported.";

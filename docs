@@ -25,7 +25,8 @@ See also SPECIAL FILES and OTHER INFO for more details.
 
 USAGE
 Arguments must occur after source directory (inst) or .insfile (del).
-Argument -p is the only exception (inst source_dir -p is permitted too).
+Argument -p is the only exception (for example, inst -p source_dir
+and inst source_dir -p are permitted).
 
 * -h (or --help)
 Prints some blah - informations and usage. If you are reading this file you
@@ -55,10 +56,11 @@ it easily.
 SPECIAL FILES
 A note about non-regular files on "inst". In general, they are not treated specially.
 Here's a note about two most common non-regular file types.
-Symbolic links are copied as regular files. If a symbolic links directs to place
-that doesn't exist, installing will abort.
+Symbolic links: instead of making one, a regular file or an empty directory is
+created. If a symbolic link directs to place that doesn't exist, installing will
+abort.
 Fifo is tried to be read as fifo, and if it can't, the program will hang (you can
-echo something to it, though).
+echo something to it, though, and the tool will go to next file on EOF).
 Aborting it with ^C will give you incomplete (or empty) .insfile file.
 This will be fixed eventually.
 
