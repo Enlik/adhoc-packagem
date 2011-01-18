@@ -10,7 +10,7 @@ use Cwd;
 use constant {
 	EXIT_OK => 0,
 	EXIT_WRARG => 1,
-	EXIT_CANTCONT => 2, # can't continue - unsupported OS or some other initial checks failed
+	EXIT_CANTCONT => 2, # can't continue: unsupported OS or some other initial checks failed
 	EXIT_ERRPROC => 3 # error during processing files
 };
 
@@ -25,9 +25,11 @@ sub usage {
 	say "";
 	say "examples:";
 	say "a)  $0 inst /tmp/lxdm -file /home/me/file";
-	say "    will install (copy) stuff from /tmp/lxdm to / and create file /home/me/file.$ext";
+	say "    will install (copy) stuff from /tmp/lxdm to / and create file " .
+		"/home/me/file.$ext";
 	say "b)  $0 inst -p /tmp/lxdm -r /mnt/abc/usr";
-	say "    will install stuff from /tmp/lxdm to /mnt/abc/usr and create file /tmp/lxdm.$ext";
+	say "    will install stuff from /tmp/lxdm to /mnt/abc/usr and create " .
+		"file /tmp/lxdm.$ext";
 	say "c)  $0 del /tmp/lxdm.$ext -r /";
 	say "    will remove stuff as described in /tmp/lxdm.$ext; it's the same as";
 	say "    \"$0 del /tmp/lxdm.$ext\" because / is default root directory";
@@ -51,7 +53,7 @@ sub help {
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
 	say "For more info see included \"docs\" file.";
-	# files with \n in name? `.', `' or anything wrong as src/dest? the same REAL src/dest?
+	# files with \n in name? `.' or anything wrong as src/dest? the same REAL src/dest?
 	say "\nauthor: Enlik";
 	say "";
 	usage 1;
@@ -153,7 +155,28 @@ sub process_file {
 	$_path_without_source = substr $path,(length ($source)+1);
 	$dst_path = $root . $_path_without_source;
 
-	if(-d $file) {
+	my $src_type;
+	use constant {
+		tdir => 1,
+		treg => 2,
+		tsym => 3,
+		toth => 0
+	};
+	# must first lstat()
+	if (-l $file) {
+		$src_type = tsym;
+	}
+	elsif (-f $file) {
+		$src_type = treg;
+	}
+	elsif (-d _) {
+		$src_type = tdir;
+	}
+	else {
+		$src_type = toth;
+	}
+	
+	if($src_type == tdir) {
 		if(-d $dst_path) {
 			# OK, dir exists, we don't touch it
 		}
@@ -185,7 +208,7 @@ sub process_file {
 			say $ff_fh "NEWDIR $dst_path";
 		}
 	}
-	else {
+	elsif($src_type == treg || $src_type == tsym) {
 		if(-d $dst_path) {
 			say "Error! The file $dst_path exists and IS a directory,";
 			say "but source file is not a directory. Aborting!";
@@ -204,24 +227,50 @@ sub process_file {
 		else {
 			unless ($pretend) {
 				# Do it!
-				unless (copy $file, $dst_path) {
-					say "Error! Can't copy file $path to $dst_path - aborting!";
-					say $!;
-					say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
-					close $ff_fh;
-					exit EXIT_ERRPROC;
+				if($src_type == treg) {
+					unless (copy $file, $dst_path) {
+						say "Error! Can't copy file $path to $dst_path - aborting!";
+						say $!;
+						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						close $ff_fh;
+						exit EXIT_ERRPROC;
+					}
+					my $ret = clone_modes($file, $dst_path);
+					if ($ret < 0) {
+						given($ret) {
+							say "Warning: can't stat $file: $!" when (-1);
+							say "Warning: can't change mode for $file: $!" when (-2);
+							say "Warning: can't change owner/group for $file: $!" when (-3);
+						}
+					}
 				}
-				my $ret = clone_modes($file, $dst_path);
-				if ($ret < 0) {
-					given($ret) {
-						say "Warning: can't stat $file: $!" when (-1);
-						say "Warning: can't change mode for $file: $!" when (-2);
-						say "Warning: can't change owner/group for $file: $!" when (-3);
+				else { # symbolic link
+					my $symlink_dest = readlink $file;
+					unless (defined $symlink_dest) {
+						# It's a symlink and can't read it?
+						say "Error, can't read destination of symbolic link $file " .
+							" - aborting!";
+						say $!;
+						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						close $ff_fh;
+						exit EXIT_ERRPROC;
+					}
+					unless (symlink ($symlink_dest, $dst_path)) {
+						say "Error, can't make a symbolic link $dst_path " .
+							"to $symlink_dest - aborting!";
+						say $!;
+						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						close $ff_fh;
+						exit EXIT_ERRPROC;
 					}
 				}
 			}
 			say $ff_fh "NEWFILE $dst_path";
 		}
+	}
+	else {
+		say "Warning, file $file is not a regular file, directory or symbolic " .
+			"link and was omitted.";
 	}
 }
 
@@ -229,8 +278,7 @@ sub process_file {
 sub clone_modes {
 	my ($from, $to) = @_;
 	return if(!defined $from or !defined $to);
-	# note: change to lstat() if it treats symlinks as symlinks in the future
-	my ($dev, $mode, $uid, $gid) = (stat ($from))[0,2,4,5];
+	my ($dev, $mode, $uid, $gid) = (lstat ($from))[0,2,4,5];
 	unless (defined $dev) {
 		return -1;
 	}
@@ -245,10 +293,11 @@ sub clone_modes {
 	return 0;
 }
 
-#################################### del ####################################
+#################################### del #####################################
 
 sub do_del {
-	undef $source; # easier to find bugs in code when using $source instead of $ff by accident
+	# easier to find bugs in code when using $source instead of $ff by accident:
+	undef $source;
 	unless ($ff =~ /.+\.\Q$ext\E$/) {
 		say "The file $ff should end with .$ext.";
 		exit EXIT_WRARG;
@@ -262,7 +311,8 @@ sub do_del {
 	my $line = 0;
 	my $rootdir; # unused, even not checked
 	my $my_root = "";
-	# note to Perl scripters (including myself): if (! $x eq "/") is wrong, negates $x ('not' is OK)
+	# note to Perl scripters (including myself):
+	# if (! $x eq "/") is wrong, negates $x ('not' is OK)
 	unless($root eq "/") {
 		$my_root = $root; # set root directory (all removed items will be its subdirectory)
 		if ($my_root =~ /(.+?)\/+$/) { $my_root = $1 } # rstrip /s
@@ -338,7 +388,7 @@ sub do_del {
 	say "Done! You may remove $ff if you want. Enjoy!" unless $pretend;
 }
 
-#################################### parse_cmdline ####################################
+################################ parse_cmdline ###############################
 
 sub parse_cmdline {
 	my $oper = shift @ARGV;
@@ -350,7 +400,7 @@ sub parse_cmdline {
 	given($oper) {
 		when ("inst") {
 			$inst = 1;
-			unless (defined $source) {
+			if (!defined $source or $source eq "") {
 				say "Error: you didn't provide a source dir.\n";
 				usage;
 				exit EXIT_WRARG;
@@ -358,7 +408,7 @@ sub parse_cmdline {
 		}
 		when("del") {
 			$inst = 0;
-			unless (defined $source) {
+			if (!defined $source or $source eq "") {
 				say "Error: you didn't provide a .$ext file.\n";
 				usage;
 				exit EXIT_WRARG;

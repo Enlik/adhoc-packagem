@@ -54,26 +54,30 @@ It can be used when you want to copy directory with some app to /usr/local
 it easily.
 
 SPECIAL FILES
-A note about non-regular files on "inst". In general, they are not treated specially.
-Here's a note about two most common non-regular file types.
-Symbolic links: instead of making one, a regular file or an empty directory is
-created. If a symbolic link directs to place that doesn't exist, installing will
-abort.
-Fifo is tried to be read as fifo, and if it can't, the program will hang (you can
-echo something to it, though, and the tool will go to next file on EOF).
-Aborting it with ^C will give you incomplete (or empty) .insfile file.
-This will be fixed eventually.
+A note about non-regular files on "inst".
+Symbolic links: a new symbolic link is made in the destination directory, and new
+symlink's "content" (where it points to) is exactly the same as of the original one.
+Note it doesn't mean the new symbolic link will always point to the same
+item in a filesystem - it means only that, for example, "../xyz" will be "../xyz".
+Another special files are ignored and a warning is issued.
+There's no attempt to change owner, group or permissions for a symbolic link.
 
 OTHER INFO
 * inst
 It tries to operate safely. If a file already exists it won't be overwritten
 (in such a case it'll abort - all changes can be undone with "del" command).
+However, if a directory (or a symbolic link that points to a directory) already
+exists, it will be used. Such a directory (or symbolic link) won't be removed
+with "del" option.
 It tries to change mode (writable, executable etc.) of created item to match the
-original one's mode. On success, tries to set the same UID and GID, too.
+original one's mode (note: not for symbolic links; not for directories that already
+exist). On success, tries to set the same UID and GID, too (same note as above).
 If any of these two operations fail, a warning is issued, but the process
 is not aborted.
 Access or modification time of created item is set as-is (usually it will be
-"now").
+"now"). 
+If a file cannot be copied or a symbolic link cannot be made, a message is
+printed on screen and the process is aborted.
 
 * del
 Currently it does not check if file was modified in any way after installing with
@@ -81,6 +85,7 @@ this tool, and removes it when using "del" option anyway.
 When removing directories it uses the rmdir function, that will refuse to
 delete non-empty directory. It is good and intended! (A non-empty directory
 occurs if something was added to it after "installing" with this tool.)
+If an item was already removed, a warning is issued.
 
 PRETEND MODE
 Pretend mode (-p) is a simple way to check of what would be done.
