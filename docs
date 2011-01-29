@@ -5,7 +5,7 @@ adhoc-packagem.pl
 A Perl tool that "installs" files from a directory and then helps removing them all.
 
 PARAMETERS (see USAGE below, too)
-inst [-p] source_dir [-r root_path] [-file output]
+inst [-p] source_dir [-r root_path] [-file output] [-nco]
 del [-p] input.insfile [-r root_path]
 -h
 --help
@@ -32,8 +32,20 @@ and inst source_dir -p are permitted).
 Prints some blah - informations and usage. If you are reading this file you
 don't need this.
 
+* -p
+Run in pretend mode. See PRETEND MODE.
+
+* -nco
+"No change ownership" - don't alter ownership of files and directories that
+has been copied.
+This option is useful when you (as root) "install" files that belong to another
+user and want the files in destination path to be owned by root.
+Another case when this option is useful is when you have no permission to
+change ownership and want to avoid "can't change owner/group" warnings.
+MORE INFO section contains more informations about changing file modes.
+
 * inst
-inst [-p] source_dir [-r root_path] [-file output]
+inst [-p] source_dir [-r root_path] [-file output] [-nco]
 Copy files from source_dir to root_path, or / if root_path is not specified.
 Use -file output to speficy output .insfile (extension will be appended if necessary).
 Default .insfile is: root_path.insfile, for example /tmp/dir.insfile for /tmp/dir.
@@ -71,7 +83,8 @@ exists, it will be used. Such a directory (or symbolic link) won't be removed
 with "del" option.
 It tries to change mode (writable, executable etc.) of created item to match the
 original one's mode (note: not for symbolic links; not for directories that already
-exist). On success, tries to set the same UID and GID, too (same note as above).
+exist). On success, tries to set the same UID and GID, too (same note as above),
+unless the -nco ("no change ownership") option is specified.
 If any of these two operations fail, a warning is issued, but the process
 is not aborted.
 Access or modification time of created item is set as-is (usually it will be

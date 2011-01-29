@@ -17,22 +17,25 @@ use constant {
 my $ext = "insfiles";
 sub usage {
 	my $ishelp = shift;
-	# inst [-p] /home/x/bash [-r /tmp] [-p] [-file insfile]
+	# inst [-p] /home/x/bash [-r /tmp] [-p] [-file insfile] [-nco]
 	# del [-p] insfile [-r /tmp]
-	say "args: inst [-p] source_dir [-r root_path] [-file output]";
+	say "args: inst [-p] source_dir [-r root_path] [-file output] [-nco]";
 	say "or:   del [-p] input.$ext [-r root_path]";
 	say "or:   [-h|--help]";
 	say "";
 	say "examples:";
 	say "a)  $0 inst /tmp/lxdm -file /home/me/file";
-	say "    will install (copy) stuff from /tmp/lxdm to / and create file " .
+	say "    will install (copy) stuff from /tmp/lxdm to / and create file ",
 		"/home/me/file.$ext";
 	say "b)  $0 inst -p /tmp/lxdm -r /mnt/abc/usr";
-	say "    will install stuff from /tmp/lxdm to /mnt/abc/usr and create " .
+	say "    will install stuff from /tmp/lxdm to /mnt/abc/usr and create ",
 		"file /tmp/lxdm.$ext";
 	say "c)  $0 del /tmp/lxdm.$ext -r /";
 	say "    will remove stuff as described in /tmp/lxdm.$ext; it's the same as";
 	say "    \"$0 del /tmp/lxdm.$ext\" because / is default root directory";
+	say "";
+	say "-p\tpretend mode";
+	say "-nco\tno change ownership";
 	say "\nUse --help to get some more info." unless defined $ishelp;
 }
 
@@ -53,7 +56,7 @@ sub help {
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
 	say "For more info see included \"docs\" file.";
-	# files with \n in name? `.' or anything wrong as src/dest? the same REAL src/dest?
+	# files with \n in name? `.' or anything wrong as src/dest? the same src/dest?
 	say "\nauthor: Enlik";
 	say "";
 	usage 1;
@@ -61,6 +64,7 @@ sub help {
 
 my $inst; # 0 or 1
 my $pretend = 0; # 0 or 1
+my $change_ownership = 1; # 0 or 1
 my $source;
 my $root; # absolute path, with a / at the end
 my $ff_fh;
@@ -106,6 +110,10 @@ sub do_inst {
 	}
 	say "info: source is: $source";
 	say "info: destination is: $root";
+	unless ($change_ownership) {
+		say "info: ownership of copied files will not be altered (-nco option ",
+			"specified";
+	}	
 	if (defined $ff) { # user provided his own
 		$ff .= "." . $ext unless $ff =~ /.+\.\Q$ext\E$/
 	}
@@ -131,7 +139,7 @@ sub do_inst {
 	say $ff_fh "# this is a comment.";
 	say $ff_fh "# $source -> $root";
 	say $ff_fh "VERSION 1";
-	say $ff_fh "ROOTDIR $root";
+	say $ff_fh "ROOTDIR $root";	
 	# todo: if find reports errors "can't cd to...", it is not handled
 	find (\&process_file, $source) or exit EXIT_CANTCONT;
 	close $ff_fh;
@@ -248,7 +256,7 @@ sub process_file {
 					my $symlink_dest = readlink $file;
 					unless (defined $symlink_dest) {
 						# It's a symlink and can't read it?
-						say "Error, can't read destination of symbolic link $file " .
+						say "Error, can't read destination of symbolic link $file ",
 							" - aborting!";
 						say $!;
 						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
@@ -256,7 +264,7 @@ sub process_file {
 						exit EXIT_ERRPROC;
 					}
 					unless (symlink ($symlink_dest, $dst_path)) {
-						say "Error, can't make a symbolic link $dst_path " .
+						say "Error, can't make a symbolic link $dst_path ",
 							"to $symlink_dest - aborting!";
 						say $!;
 						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
@@ -269,7 +277,7 @@ sub process_file {
 		}
 	}
 	else {
-		say "Warning, file $file is not a regular file, directory or symbolic " .
+		say "Warning, file $file is not a regular file, directory or symbolic ",
 			"link and was omitted.";
 	}
 }
@@ -283,12 +291,15 @@ sub clone_modes {
 		return -1;
 	}
 	$mode = $mode & 07777;
-
+	
 	unless(chmod $mode, $to) {
 		return -2;
 	}
-	unless (chown $uid, $gid, $to) {
-		return -3;
+	
+	if ($change_ownership) {
+		unless (chown $uid, $gid, $to) {
+			return -3;
+		}
 	}
 	return 0;
 }
@@ -424,7 +435,7 @@ sub parse_cmdline {
 		exit EXIT_WRARG;
 	}
 	
-	say "Warning, source directory is $source and begins with a `-' - make sure\n" .
+	say "Warning, source directory is $source and begins with a `-' - make sure\n",
 		"it's not due to a mistake in parameters.\n"
 		if ($source =~ /^-/);
 	
@@ -458,6 +469,13 @@ sub parse_cmdline {
 			when(["-h", "--help"]) {
 				help;
 				exit EXIT_OK;
+			}
+			when ("-nco") {
+				unless ($inst) {
+					say "Error, -nco can be used only with \"inst\".";
+					exit EXIT_WRARG;
+				}
+				$change_ownership = 0;
 			}
 			say "Error: too much or wrong parameters ($arg).\n";
 			usage;
