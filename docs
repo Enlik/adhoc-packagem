@@ -5,7 +5,7 @@ adhoc-packagem.pl
 A Perl tool that "installs" files from a directory and then helps removing them all.
 
 PARAMETERS (see USAGE below, too)
-inst [-p] source_dir [-r root_path] [-file output] [-nco]
+inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]
 del [-p] input.insfile [-r root_path]
 -h
 --help
@@ -36,6 +36,7 @@ don't need this.
 Run in pretend mode. See PRETEND MODE.
 
 * -nco
+Only allowed with "inst".
 "No change ownership" - don't alter ownership of files and directories that
 has been copied.
 This option is useful when you (as root) "install" files that belong to another
@@ -44,8 +45,20 @@ Another case when this option is useful is when you have no permission to
 change ownership and want to avoid "can't change owner/group" warnings.
 MORE INFO section contains more informations about changing file modes.
 
+* -sc
+Only allowed with "inst".
+"Skip on conflict" - allows to continue copying if an item in destination
+directory already exist. The only exception is when source is a directory (not
+a symbolic link pointing to a directory) and destination is a file. In such
+a case copying will abort, as usual. The reason: if we have file structure
+in source directory like this: abc/def (abc is a directory) and in destination:
+abc (abc is a file), copying the file abc/def will fail anyway, because there
+is no abc directory to copy to.
+A file that has been skipped is not recorded in a .insfile file and will not
+be removed when "del" command is used.
+
 * inst
-inst [-p] source_dir [-r root_path] [-file output] [-nco]
+inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]
 Copy files from source_dir to root_path, or / if root_path is not specified.
 Use -file output to speficy output .insfile (extension will be appended if necessary).
 Default .insfile is: root_path.insfile, for example /tmp/dir.insfile for /tmp/dir.
@@ -77,10 +90,16 @@ There's no attempt to change owner, group or permissions for a symbolic link.
 OTHER INFO
 * inst
 It tries to operate safely. If a file already exists it won't be overwritten
-(in such a case it'll abort - all changes can be undone with "del" command).
+(in such a case the process will abort unless "-sc" is used - all changes can be
+undone with "del" command).
 However, if a directory (or a symbolic link that points to a directory) already
 exists, it will be used. Such a directory (or symbolic link) won't be removed
 with "del" option.
+If a source item is a directory and a file with the same name exists in destination
+directory, the process is aborted.
+If a source item is not a directory and a directory (or a symbolic link pointing
+to a directory) with the same name exists in destination directory, the process
+is aborted unless "-sc" option is used.
 It tries to change mode (writable, executable etc.) of created item to match the
 original one's mode (note: not for symbolic links; not for directories that already
 exist). On success, tries to set the same UID and GID, too (same note as above),
@@ -105,17 +124,17 @@ Pretend mode (-p) is a simple way to check of what would be done.
 * with "inst":
 - generates a .insfile,
 - checks if there are any conflicts ("If a file already exists it won't be
-overwritten" above),
+overwritten" etc. above),
 - does not check for permissions or another problems that can occur during copying;
 
 * with "del":
-- reads a .insfile (with normal check if it's OK),
+- reads a .insfile (with normal check whether it's OK),
 - writes what file (or maybe directory - see below) would be removed,
 - if such a file/directory does not exist anymore, tells user about it,
 - a non-empty directory would not be removed, but in this mode user won't be
 notified about this fact.
 
 The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
-Enlik, January 2011.
+Enlik, January/April 2011.
 
 End of file.

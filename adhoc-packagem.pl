@@ -17,9 +17,9 @@ use constant {
 my $ext = "insfiles";
 sub usage {
 	my $ishelp = shift;
-	# inst [-p] /home/x/bash [-r /tmp] [-p] [-file insfile] [-nco]
+	# inst [-p] /home/x/bash [-r /tmp] [-p] [-file insfile] [-nco] [-sc]
 	# del [-p] insfile [-r /tmp]
-	say "args: inst [-p] source_dir [-r root_path] [-file output] [-nco]";
+	say "args: inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]";
 	say "or:   del [-p] input.$ext [-r root_path]";
 	say "or:   [-h|--help]";
 	say "";
@@ -36,6 +36,8 @@ sub usage {
 	say "";
 	say "-p\tpretend mode";
 	say "-nco\tno change ownership";
+	say "-sc\tskip item on conflict";
+	say "(For details about the two above commands (and more) see the file \"docs\".)";
 	say "\nUse --help to get some more info." unless defined $ishelp;
 }
 
@@ -55,9 +57,8 @@ sub help {
 	say "Warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
-	say "For more info see included \"docs\" file.";
 	# files with \n in name? `.' or anything wrong as src/dest? the same src/dest?
-	say "\nauthor: Enlik";
+	say "author: Enlik";
 	say "";
 	usage 1;
 }
@@ -65,6 +66,7 @@ sub help {
 my $inst; # 0 or 1
 my $pretend = 0; # 0 or 1
 my $change_ownership = 1; # 0 or 1
+my $skip_on_conflict = 0; # 0 or 1
 my $source;
 my $root; # absolute path, with a / at the end
 my $ff_fh;
@@ -112,8 +114,8 @@ sub do_inst {
 	say "info: destination is: $root";
 	unless ($change_ownership) {
 		say "info: ownership of copied files will not be altered (-nco option ",
-			"specified";
-	}	
+			"specified)";
+	}
 	if (defined $ff) { # user provided his own
 		$ff .= "." . $ext unless $ff =~ /.+\.\Q$ext\E$/
 	}
@@ -124,22 +126,22 @@ sub do_inst {
 		say "Error, file $ff already exists.";
 		say "Have you already installed the files somewhere?";
 		exit EXIT_CANTCONT;
-	} 
+	}
 	else {
 		say ".$ext file is: $ff";
 	}
 	# chdir $source or die "Can't change dir to $source: $!\n";
-	
+
 	unless (open ($ff_fh, ">", $ff)) {
 		say "Error, can't open .$ext file for writing.";
 		exit EXIT_CANTCONT;
 	}
-	
+
 	say $ff_fh "# $0";
 	say $ff_fh "# this is a comment.";
 	say $ff_fh "# $source -> $root";
 	say $ff_fh "VERSION 1";
-	say $ff_fh "ROOTDIR $root";	
+	say $ff_fh "ROOTDIR $root";
 	# todo: if find reports errors "can't cd to...", it is not handled
 	find (\&process_file, $source) or exit EXIT_CANTCONT;
 	close $ff_fh;
@@ -153,7 +155,7 @@ sub process_file {
 	my $dir = $File::Find::dir;
 	my $_path_without_source;
 	my $dst_path; # = $root . $path;
-	
+
 	return if $file eq '.'; # omit 'dir' itself
 	# say "**** cwd: " . Cwd::getcwd;say "p $path\nf $file\nd $dir\ndst $dst_path";
 	if ($path eq $source) {
@@ -183,15 +185,17 @@ sub process_file {
 	else {
 		$src_type = toth;
 	}
-	
+
 	if($src_type == tdir) {
 		if(-d $dst_path) {
 			# OK, dir exists, we don't touch it
 		}
 		elsif(-e _) {
+			# skip also when $skip_on_conflict, because if src/d = dir
+			# and dst/d = file, copying of src/d/something will fail anyway
 			say "Error! The file $dst_path exists and it's not a directory.";
-			say "Aborting!";
-			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+			say "\tAborting!";
+			say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
 			close $ff_fh;
 			exit EXIT_ERRPROC; # with File::Find one can't abort find() it seems :/
 		}
@@ -200,7 +204,7 @@ sub process_file {
 				unless (mkdir $dst_path) {
 					say "Error! Can't create directory $dst_path - aborting!";
 					say $!;
-					say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+					say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
 					close $ff_fh;
 					exit EXIT_ERRPROC;
 				}
@@ -218,19 +222,33 @@ sub process_file {
 	}
 	elsif($src_type == treg || $src_type == tsym) {
 		if(-d $dst_path) {
-			say "Error! The file $dst_path exists and IS a directory,";
-			say "but source file is not a directory. Aborting!";
-			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
-			close $ff_fh;
-			exit EXIT_ERRPROC;
+			if($skip_on_conflict) {
+				say "Info: skipping file $file: destination already ",
+					"exists. Destination $dst_path is a directory or a symbolic ",
+					"link pointing to a directory.";
+			}
+			else {
+				say "Error! The file $dst_path exists and IS a directory";
+				say "\t(or a symbolic link pointing to a directory)";
+				say "\tbut source file is not a directory. Aborting!";
+				say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
+				close $ff_fh;
+				exit EXIT_ERRPROC;
+			}
 		}
 		elsif (-e _) {
-			# let's yell a bit
-			say "Error! The file $dst_path exists!";
-			say "I'm not going to overwrite it. Aborting!";
-			say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
-			close $ff_fh;
-			exit EXIT_ERRPROC;
+			if($skip_on_conflict) {
+				say "Info: skipping file $file: destination already ",
+					"exists. Destination $dst_path is a file.";
+			}
+			else {
+				# let's yell a bit
+				say "Error! The file $dst_path exists!";
+				say "\tI'm not going to overwrite it. Aborting!";
+				say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
+				close $ff_fh;
+				exit EXIT_ERRPROC;
+			}
 		}
 		else {
 			unless ($pretend) {
@@ -238,8 +256,8 @@ sub process_file {
 				if($src_type == treg) {
 					unless (copy $file, $dst_path) {
 						say "Error! Can't copy file $path to $dst_path - aborting!";
-						say $!;
-						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						say "\t",$!;
+						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
 						close $ff_fh;
 						exit EXIT_ERRPROC;
 					}
@@ -259,7 +277,7 @@ sub process_file {
 						say "Error, can't read destination of symbolic link $file ",
 							" - aborting!";
 						say $!;
-						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
 						close $ff_fh;
 						exit EXIT_ERRPROC;
 					}
@@ -267,7 +285,7 @@ sub process_file {
 						say "Error, can't make a symbolic link $dst_path ",
 							"to $symlink_dest - aborting!";
 						say $!;
-						say "REMEMBER TO UNDONE CHANGES MANUALLY using $0 del $ff";
+						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
 						close $ff_fh;
 						exit EXIT_ERRPROC;
 					}
@@ -291,11 +309,11 @@ sub clone_modes {
 		return -1;
 	}
 	$mode = $mode & 07777;
-	
+
 	unless(chmod $mode, $to) {
 		return -2;
 	}
-	
+
 	if ($change_ownership) {
 		unless (chown $uid, $gid, $to) {
 			return -3;
@@ -329,7 +347,7 @@ sub do_del {
 		if ($my_root =~ /(.+?)\/+$/) { $my_root = $1 } # rstrip /s
 		say "Root directory for the operation is $my_root.";
 	}
-	
+
 	while (<$ff_fh>) {
 		$line++;
 		chomp;
@@ -362,7 +380,7 @@ sub do_del {
 		}
 	}
 	close $ff_fh;
-	
+
 	my $path;
 	@opers = reverse @opers;
 	for (@opers) {
@@ -429,16 +447,16 @@ sub parse_cmdline {
 			help;
 			exit EXIT_OK;
 		}
-		
+
 		say "Error: incorrect args.\n";
 		usage;
 		exit EXIT_WRARG;
 	}
-	
+
 	say "Warning, source directory is $source and begins with a `-' - make sure\n",
 		"it's not due to a mistake in parameters.\n"
 		if ($source =~ /^-/);
-	
+
 	while(my $arg = shift @ARGV) {
 		given ($arg) {
 			when("-p") {
@@ -476,6 +494,13 @@ sub parse_cmdline {
 					exit EXIT_WRARG;
 				}
 				$change_ownership = 0;
+			}
+			when ("-sc") {
+				unless ($inst) {
+					say "Error, -nsc can be used only with \"inst\".";
+					exit EXIT_WRARG;
+				}
+				$skip_on_conflict = 1;
 			}
 			say "Error: too much or wrong parameters ($arg).\n";
 			usage;
