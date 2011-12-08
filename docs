@@ -4,11 +4,13 @@ adhoc-packagem.pl
 
 A Perl tool that "installs" files from a directory and then helps removing them all.
 
-PARAMETERS (see USAGE below, too)
-inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]
-del [-p] input.insfile [-r root_path]
+USAGE (see OPTIONS below, too)
+inst [-p|-dummy] <source_dir> [-r <root_path>] [-file <output>[.insfiles]]
+  [-nco] [-sc] [-strip]
+del [-p] <input>.insfiles [-r <root_path>]
 -h
 --help
+
 
 PREFACE
 Currently it's not very smart, but it does the job.
@@ -23,10 +25,29 @@ Have you already installed the files somewhere?
 - like this).
 See also SPECIAL FILES and OTHER INFO for more details.
 
-USAGE
-Arguments must occur after source directory (inst) or .insfile (del).
-Argument -p is the only exception (for example, inst -p source_dir
-and inst source_dir -p are permitted).
+OPTIONS
+Command line arguments must occur after source directory (inst) or .insfile (del).
+Options -p and -dummy are the exception: they can occur just after "inst" or "del"
+(examples of permitted order: inst -p x; inst x -p; inst -dummy x). Duplicated
+-p or -dummy are not allowed here: in "inst -p -p x", "-p" would be treated as
+a "source_dir" argument.
+
+* inst
+inst [-p|-dummy] <source_dir> [-r <root_path>] [-file <output>[.insfiles]]
+  [-nco] [-sc] [-strip]
+Copy files from source_dir to root_path, or / if root_path is not specified.
+Use -file output to specify output .insfile (extension will be appended if necessary).
+Default .insfile is: root_path.insfile, for example /tmp/dir.insfile for /tmp/dir;
+or, if the last part of path of root_path begins with a dot, the text "FILES"
+(and a dot, if necessary) is prepended to the file name.
+
+* del
+del [-p] <input>.insfiles [-r <root_path>]
+Reads input.insfile and removes files and non-empty directories in reversed order.
+If you specify -r root_path, it will be appended to all items. This could
+be useful if you work with chroots. Use -p to see what resulting paths would look
+like.
+Note: additional -file input2.insfile is permitted and will override input.insfile.
 
 * -h (or --help)
 Prints some blah - informations and usage. If you are reading this file you
@@ -34,6 +55,16 @@ don't need this.
 
 * -p
 Run in pretend mode. See PRETEND MODE.
+
+* -dummy
+When in dummy mode, nothing is copied to destination directory. Only a .insfiles
+file is created, without checking for any conflicts that might occur without
+this option.
+This can be useful to recreate a .insfile after it has been lost using only
+original source directory. Note that such .insfile file will be different from
+the original one if for example previous "inst" was run with option "-sc" and
+file collisions were detected and thus not recorded in the .insfile content,
+but these files will be recorded now with -dummy option used.
 
 * -nco
 Only allowed with "inst".
@@ -44,6 +75,11 @@ user and want the files in destination path to be owned by root.
 Another case when this option is useful is when you have no permission to
 change ownership and want to avoid "can't change owner/group" warnings.
 MORE INFO section contains more informations about changing file modes.
+This has no effect (besides of printing a message) with -p and -dummy.
+
+* -r
+Specify alternative root path (or destination). If used multiple times, the last
+one will be used. See description for "inst" and "del".
 
 * -sc
 Only allowed with "inst".
@@ -57,21 +93,20 @@ is no abc directory to copy to.
 A file that has been skipped is not recorded in a .insfile file and will not
 be removed when "del" command is used.
 
-* inst
-inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]
-Copy files from source_dir to root_path, or / if root_path is not specified.
-Use -file output to speficy output .insfile (extension will be appended if necessary).
-Default .insfile is: root_path.insfile, for example /tmp/dir.insfile for /tmp/dir.
+* -file
+Specify alternative name (path) to a .insfiles file. Most useful with "inst",
+but can be used with "del", too. If used multiple times, the last one will be used.
 
-* del
-del [-p] input.insfile [-r root_path]
-Reads input.insfile and removes files and non-empty directories in reversed order.
-If you specify -r root_path, it will be appended to all items. This could
-be useful if you work with chroots. Use -p to see what resulting paths would look
-like.
-Note: additional -file input2.insfile is permitted and will override input.insfile.
-
-If used multiple -file arg or -r arg, the last one will be used.
+* -strip
+If this option is used, root directory saved in a .insfile is set to "/".
+In other words, the remaining part is "stripped". This only affects contents
+of the file with list; files are installed as normal. This option can be useful
+when you install to a chroot. To remove files from the same location as before,
+the '-r' argument can be used with "del".
+For example:
+./adhoc-packagem.pl inst src /opt/dst -file haha.insfiles -strip
+# src.insfiles wouldn't contain the full path to "dst"; to remove files:
+./adhoc-packagem.pl del haha.insfiles -r /opt/dst.
 
 PURPOSE
 It can be used when you want to copy directory with some app to /usr/local
@@ -110,6 +145,8 @@ Access or modification time of created item is set as-is (usually it will be
 "now"). 
 If a file cannot be copied or a symbolic link cannot be made, a message is
 printed on screen and the process is aborted.
+If none of these options are provided: -p, -sc, -dummy, then if nothing has been
+copied due to an error (usually perminssion error), .insfile file is deleted.
 
 * del
 Currently it does not check if file was modified in any way after installing with
@@ -135,6 +172,6 @@ overwritten" etc. above),
 notified about this fact.
 
 The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
-Enlik, January/April 2011.
+Enlik, January/April/December 2011.
 
 End of file.

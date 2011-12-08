@@ -17,28 +17,32 @@ use constant {
 my $ext = "insfiles";
 sub usage {
 	my $ishelp = shift;
-	# inst [-p] /home/x/bash [-r /tmp] [-p] [-file insfile] [-nco] [-sc]
+	# inst [-p|-dummy] /home/x/bash [-r /tmp] [-file insfile] [-nco] [-sc]
 	# del [-p] insfile [-r /tmp]
-	say "args: inst [-p] source_dir [-r root_path] [-file output] [-nco] [-sc]";
-	say "or:   del [-p] input.$ext [-r root_path]";
-	say "or:   [-h|--help]";
+	say "usage: inst [-p|-dummy] <source_dir> ",
+		"[-r <root_path>] [-file <output>[.$ext]] [-nco] [-sc] [-strip]";
+	say "or:    del [-p] <input>.$ext [-r <root_path>]";
+	say "or:    [-h|--help]";
 	say "";
 	say "examples:";
 	say "a)  $0 inst /tmp/lxdm -file /home/me/file";
 	say "    will install (copy) stuff from /tmp/lxdm to / and create file ",
 		"/home/me/file.$ext";
 	say "b)  $0 inst -p /tmp/lxdm -r /mnt/abc/usr";
-	say "    will install stuff from /tmp/lxdm to /mnt/abc/usr and create ",
-		"file /tmp/lxdm.$ext";
+	say "    (run in pretend mode) will check if conflicts would occur while ",
+		"installing\n     stuff from /tmp/lxdm to /mnt/abc/usr and create file ",
+		"/tmp/lxdm.$ext";
 	say "c)  $0 del /tmp/lxdm.$ext -r /";
 	say "    will remove stuff as described in /tmp/lxdm.$ext; it's the same as";
 	say "    \"$0 del /tmp/lxdm.$ext\" because / is default root directory";
 	say "";
-	say "-p\tpretend mode";
-	say "-nco\tno change ownership";
-	say "-sc\tskip item on conflict";
-	say "(For details about the two above commands (and more) see the file \"docs\".)";
-	say "\nUse --help to get some more info." unless defined $ishelp;
+	say "-p     \tpretend mode";
+	say "-dummy \tdummy mode (only create a .$ext file)";
+	say "-nco   \tno change ownership";
+	say "-sc    \tskip item on conflict";
+	say "-strip \t\"strip\" root (destination) path from a .$ext file";
+	say "\n(For details about usage (and other informations) see the file \"docs\".)";
+	say "Use --help to get some more info." unless defined $ishelp;
 }
 
 sub help {
@@ -58,6 +62,7 @@ sub help {
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
 	# files with \n in name? `.' or anything wrong as src/dest? the same src/dest?
+	# ./adhoc-packagem.pl inst x -file x/blah -r y -> creates empty y/blah.$ext
 	say "author: Enlik";
 	say "";
 	usage 1;
@@ -65,12 +70,18 @@ sub help {
 
 my $inst; # 0 or 1
 my $pretend = 0; # 0 or 1
+my $dummy = 0; # 0 or 1
 my $change_ownership = 1; # 0 or 1
 my $skip_on_conflict = 0; # 0 or 1
+my $strip_root = 0; # 0 or 1
 my $source;
 my $root; # absolute path, with a / at the end
 my $ff_fh;
 my $ff; # .$ext file
+
+# 0 or 1; indicates if anything was copied (or would be in pretend mode)
+my $changes_done = 0;
+my $start_cwd = Cwd::cwd;
 
 if ($^O ne "linux") {
 	say "Sorry, your OS may not be supported.";
@@ -83,6 +94,9 @@ parse_cmdline();
 
 if($pretend) {
 	say "Running in \"pretend\" mode.";
+}
+if ($dummy) {
+	say "Running in \"dummy\" mode.";
 }
 
 if ($inst) {
@@ -97,18 +111,18 @@ else {
 sub do_inst {
 	# set $root absolute path
 	unless (substr ($root,0,1) eq '/') {
-		$root = Cwd::cwd . '/' . $root;
+		$root = $start_cwd . '/' . $root;
 	}
-	if ($source =~ /(.+?)\/+$/) { $source = $1 } # rstrip /s
-	if ($root =~ /(.+?)\/+$/) { $root = $1 } # rstrip /s
+	if ($source =~ /(.+?)\/+$/) { $source = $1 } # rstrip '/' characters
+	if ($root =~ /(.+?)\/+$/) { $root = $1 } # rstrip '/' characters
 	$root .= '/' unless $root eq '/'; # and prepend one
 	if (! -d $source) {
-		say "Error, source doesn't exist or is not a dir.";
+		say "Error, source \"$source\" doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT;
 	}
 	if (! -d $root) {
 		say "Error, destination $root doesn't exist or is not a dir.";
-		exit EXIT_CANTCONT;
+		exit EXIT_CANTCONT unless $dummy;
 	}
 	say "info: source is: $source";
 	say "info: destination is: $root";
@@ -120,7 +134,13 @@ sub do_inst {
 		$ff .= "." . $ext unless $ff =~ /.+\.\Q$ext\E$/
 	}
 	else {
-		$ff = $source . "." . $ext;
+		# avoid names starting with a dot
+		my @dirs = split /\//, $source;
+		my $last = $dirs[-1];
+		$last = "FILES" . $last if ($last =~ /^\./);
+		$last .= '.' unless $last =~ /\.$/;
+		$dirs[-1] = $last . $ext;
+		$ff = join "/", @dirs;
 	}
 	if (-f $ff) {
 		say "Error, file $ff already exists.";
@@ -139,14 +159,35 @@ sub do_inst {
 
 	say $ff_fh "# $0";
 	say $ff_fh "# this is a comment.";
-	say $ff_fh "# $source -> $root";
+	say $ff_fh "# $source " . ( $strip_root ? "(stripped)" : "") . " -> $root";
 	say $ff_fh "VERSION 1";
-	say $ff_fh "ROOTDIR $root";
+	say $ff_fh "ROOTDIR " . ( $strip_root ? "/" : "$root");
 	# todo: if find reports errors "can't cd to...", it is not handled
-	find (\&process_file, $source) or exit EXIT_CANTCONT;
+	find (\&process_file, $source);
 	close $ff_fh;
-	say "\nDone. Remember to backup the file $ff.";
+	if ($changes_done or $dummy) {
+		say "\nDone. Remember to backup the file $ff.";
+	}
+	else {
+		say "\nNo changes were done. You may want to remove the file $ff.";
+	}
 	exit EXIT_OK;
+}
+
+# to be used with inst
+sub _on_undo {
+	if ($changes_done) {
+		say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
+		close $ff_fh;
+	}
+	else {
+		my $ff_path = $start_cwd . '/' . $ff;
+		say "No changes were done. $ff is not needed and will be removed.";
+		close $ff_fh;
+		unless (unlink $ff_path) {
+			say "Warning: can't remove file $ff_path: $!.";
+		}
+	}
 }
 
 sub process_file {
@@ -155,6 +196,7 @@ sub process_file {
 	my $dir = $File::Find::dir;
 	my $_path_without_source;
 	my $dst_path; # = $root . $path;
+	my $save_path; # path to save
 
 	return if $file eq '.'; # omit 'dir' itself
 	# say "**** cwd: " . Cwd::getcwd;say "p $path\nf $file\nd $dir\ndst $dst_path";
@@ -164,6 +206,13 @@ sub process_file {
 	}
 	$_path_without_source = substr $path,(length ($source)+1);
 	$dst_path = $root . $_path_without_source;
+
+	if (!$strip_root) {
+		$save_path = $dst_path;
+	}
+	else {
+		$save_path = '/' . $_path_without_source;
+	}
 
 	my $src_type;
 	use constant {
@@ -187,6 +236,10 @@ sub process_file {
 	}
 
 	if($src_type == tdir) {
+		if ($dummy) {
+			say $ff_fh "NEWDIR $save_path";
+			return;
+		}
 		if(-d $dst_path) {
 			# OK, dir exists, we don't touch it
 		}
@@ -195,8 +248,7 @@ sub process_file {
 			# and dst/d = file, copying of src/d/something will fail anyway
 			say "Error! The file $dst_path exists and it's not a directory.";
 			say "\tAborting!";
-			say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-			close $ff_fh;
+			_on_undo();
 			exit EXIT_ERRPROC; # with File::Find one can't abort find() it seems :/
 		}
 		else {
@@ -204,8 +256,7 @@ sub process_file {
 				unless (mkdir $dst_path) {
 					say "Error! Can't create directory $dst_path - aborting!";
 					say $!;
-					say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-					close $ff_fh;
+					_on_undo();
 					exit EXIT_ERRPROC;
 				}
 				my $ret = clone_modes($file, $dst_path);
@@ -217,10 +268,15 @@ sub process_file {
 					}
 				}
 			}
-			say $ff_fh "NEWDIR $dst_path";
+			$changes_done = 1;
+			say $ff_fh "NEWDIR $save_path";
 		}
 	}
 	elsif($src_type == treg || $src_type == tsym) {
+		if ($dummy) {
+			say $ff_fh "NEWFILE $save_path";
+			return;
+		}
 		if(-d $dst_path) {
 			if($skip_on_conflict) {
 				say "Info: skipping file $file: destination already ",
@@ -231,8 +287,7 @@ sub process_file {
 				say "Error! The file $dst_path exists and IS a directory";
 				say "\t(or a symbolic link pointing to a directory)";
 				say "\tbut source file is not a directory. Aborting!";
-				say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-				close $ff_fh;
+				_on_undo();
 				exit EXIT_ERRPROC;
 			}
 		}
@@ -245,8 +300,7 @@ sub process_file {
 				# let's yell a bit
 				say "Error! The file $dst_path exists!";
 				say "\tI'm not going to overwrite it. Aborting!";
-				say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-				close $ff_fh;
+				_on_undo();
 				exit EXIT_ERRPROC;
 			}
 		}
@@ -257,8 +311,7 @@ sub process_file {
 					unless (copy $file, $dst_path) {
 						say "Error! Can't copy file $path to $dst_path - aborting!";
 						say "\t",$!;
-						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-						close $ff_fh;
+						_on_undo();
 						exit EXIT_ERRPROC;
 					}
 					my $ret = clone_modes($file, $dst_path);
@@ -277,21 +330,20 @@ sub process_file {
 						say "Error, can't read destination of symbolic link $file ",
 							" - aborting!";
 						say $!;
-						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-						close $ff_fh;
+						_on_undo();
 						exit EXIT_ERRPROC;
 					}
 					unless (symlink ($symlink_dest, $dst_path)) {
 						say "Error, can't make a symbolic link $dst_path ",
 							"to $symlink_dest - aborting!";
 						say $!;
-						say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
-						close $ff_fh;
+						_on_undo();
 						exit EXIT_ERRPROC;
 					}
 				}
 			}
-			say $ff_fh "NEWFILE $dst_path";
+			$changes_done = 1;
+			say $ff_fh "NEWFILE $save_path";
 		}
 	}
 	else {
@@ -421,11 +473,25 @@ sub do_del {
 
 sub parse_cmdline {
 	my $oper = shift @ARGV;
-	$source = shift @ARGV;
-	if(defined $source and $source eq "-p") {
-		$pretend = 1;
+	while (1) {
 		$source = shift @ARGV;
+		if(defined $source and $source eq "-p" and !$pretend) {
+			$pretend = 1;
+		}
+		elsif(defined $source and $source eq "-dummy" and !$dummy) {
+			$dummy = 1;
+		}
+		else {
+			last;
+		}
+		# Check it here, too. Not necessary, but let's get the message earlier.
+		if ($pretend and $dummy) {
+			say "Error: -p and -dummy cannot be used together.\n";
+			usage;
+			exit EXIT_WRARG;
+		}
 	}
+
 	given($oper) {
 		when ("inst") {
 			$inst = 1;
@@ -437,11 +503,16 @@ sub parse_cmdline {
 		}
 		when("del") {
 			$inst = 0;
+			if ($dummy) {
+				say "Error, -dummy can only be used with \"inst\".";
+				exit EXIT_WRARG;
+			}
 			if (!defined $source or $source eq "") {
 				say "Error: you didn't provide a .$ext file.\n";
 				usage;
 				exit EXIT_WRARG;
 			}
+			$ff = $source;
 		}
 		when(["-h", "--help"]) {
 			help;
@@ -460,8 +531,14 @@ sub parse_cmdline {
 	while(my $arg = shift @ARGV) {
 		given ($arg) {
 			when("-p") {
-				say "Warning, -p (pretend) is already specified." if $pretend;
 				$pretend = 1;
+			}
+			when("-dummy") {
+				unless ($inst) {
+					say "Error, -dummy can only be used with \"inst\".";
+					exit EXIT_WRARG;
+				}
+				$dummy = 1;
 			}
 			when("-r") {
 				say "Warning, -r DIR specified once again, overriding." if defined $root;
@@ -472,11 +549,8 @@ sub parse_cmdline {
 				}
 			}
 			when("-file") {
-				if(!$inst) {
+				if(!$inst or defined $ff) {
 					say "Warning, source file overridden by -file option."
-				}
-				elsif (defined $ff) {
-					say "Warning, source file overriding by -file option."
 				}
 				$ff = shift @ARGV;
 				if (!defined $ff or $ff eq "") {
@@ -490,23 +564,34 @@ sub parse_cmdline {
 			}
 			when ("-nco") {
 				unless ($inst) {
-					say "Error, -nco can be used only with \"inst\".";
+					say "Error, -nco can only be used with \"inst\".";
 					exit EXIT_WRARG;
 				}
 				$change_ownership = 0;
 			}
 			when ("-sc") {
 				unless ($inst) {
-					say "Error, -nsc can be used only with \"inst\".";
+					say "Error, -sc can only be used with \"inst\".";
 					exit EXIT_WRARG;
 				}
 				$skip_on_conflict = 1;
+			}
+			when ("-strip") {
+				unless ($inst) {
+					say "Error, -strip can only be used with \"inst\".";
+					exit EXIT_WRARG;
+				}
+				$strip_root = 1;
 			}
 			say "Error: too much or wrong parameters ($arg).\n";
 			usage;
 			exit EXIT_WRARG;
 		}
 	}
+	if ($pretend and $dummy) {
+		say "Error: -p and -dummy cannot be used together.\n";
+		usage;
+		exit EXIT_WRARG;
+	}
 	$root = $root // "/";
-	$ff = $ff // $source if(!$inst);
 }
