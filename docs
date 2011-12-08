@@ -146,7 +146,7 @@ Access or modification time of created item is set as-is (usually it will be
 If a file cannot be copied or a symbolic link cannot be made, a message is
 printed on screen and the process is aborted.
 If none of these options are provided: -p, -sc, -dummy, then if nothing has been
-copied due to an error (usually perminssion error), .insfile file is deleted.
+copied due to an error (usually permission error), .insfile file is deleted.
 
 * del
 Currently it does not check if file was modified in any way after installing with
