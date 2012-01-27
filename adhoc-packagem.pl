@@ -5,6 +5,7 @@ use strict;
 use 5.010;
 use File::Find;
 use File::Copy;
+use File::Spec;
 use Cwd;
 
 use constant {
@@ -75,7 +76,9 @@ my $change_ownership = 1; # 0 or 1
 my $skip_on_conflict = 0; # 0 or 1
 my $strip_root = 0; # 0 or 1
 my $source;
-my $root; # absolute path, with a / at the end
+my @source_a;
+my $root; # absolute destination path
+my @root_a;
 my $ff_fh;
 my $ff; # .$ext file
 
@@ -109,13 +112,12 @@ else {
 #################################### inst ####################################
 
 sub do_inst {
-	# set $root absolute path
-	unless (substr ($root,0,1) eq '/') {
-		$root = $start_cwd . '/' . $root;
-	}
-	if ($source =~ /(.+?)\/+$/) { $source = $1 } # rstrip '/' characters
-	if ($root =~ /(.+?)\/+$/) { $root = $1 } # rstrip '/' characters
-	$root .= '/' unless $root eq '/'; # and prepend one
+	# set $root as absolute path
+	$root = File::Spec->rel2abs($root);
+	$source = File::Spec->canonpath($source);
+	# we don't want volume names
+	$root =   ( File::Spec->splitpath( $root,   "dirs" ) )[1];
+	$source = ( File::Spec->splitpath( $source, "dirs" ) )[1];
 	if (! -d $source) {
 		say "Error, source \"$source\" doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT;
@@ -124,6 +126,8 @@ sub do_inst {
 		say "Error, destination $root doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT unless $dummy;
 	}
+	@source_a = File::Spec->splitdir($source);
+	@root_a   = File::Spec->splitdir($root);
 	say "info: source is: $source";
 	say "info: destination is: $root";
 	unless ($change_ownership) {
@@ -134,13 +138,19 @@ sub do_inst {
 		$ff .= "." . $ext unless $ff =~ /.+\.\Q$ext\E$/
 	}
 	else {
-		# avoid names starting with a dot
-		my @dirs = split /\//, $source;
+		my @dirs = @source_a;
 		my $last = $dirs[-1];
-		$last = "FILES" . $last if ($last =~ /^\./);
-		$last .= '.' unless $last =~ /\.$/;
-		$dirs[-1] = $last . $ext;
-		$ff = join "/", @dirs;
+		# avoid names starting with a dot
+		if ($last =~ /^\./) {
+			# first, remove all dots from the beginning
+			$last =~ s/^\.+//g;
+			$last = "FILES." . $last
+		}
+		# strip all dots from the end and prepend one with the extension
+		$last =~ s/\.+$//g;
+		$last .= '.' . $ext;
+		$dirs[-1] = $last;
+		$ff = File::Spec->catdir(@dirs);
 	}
 	if (-f $ff) {
 		say "Error, file $ff already exists.";
@@ -161,7 +171,7 @@ sub do_inst {
 	say $ff_fh "# this is a comment.";
 	say $ff_fh "# $source " . ( $strip_root ? "(stripped)" : "") . " -> $root";
 	say $ff_fh "VERSION 1";
-	say $ff_fh "ROOTDIR " . ( $strip_root ? "/" : "$root");
+	say $ff_fh "ROOTDIR " . ( $strip_root ? File::Spec->rootdir() : "$root");
 	# todo: if find reports errors "can't cd to...", it is not handled
 	find (\&process_file, $source);
 	close $ff_fh;
@@ -181,7 +191,7 @@ sub _on_undo {
 		close $ff_fh;
 	}
 	else {
-		my $ff_path = $start_cwd . '/' . $ff;
+		my $ff_path = File::Spec->rel2abs($ff, $start_cwd);
 		say "No changes were done. $ff is not needed and will be removed.";
 		close $ff_fh;
 		unless (unlink $ff_path) {
@@ -192,26 +202,32 @@ sub _on_undo {
 
 sub process_file {
 	my $path = $File::Find::name;
-	my $file = $_; # find does chdir by default, so we'll use this
-	my $dir = $File::Find::dir;
-	my $_path_without_source;
-	my $dst_path; # = $root . $path;
-	my $save_path; # path to save
+	my $file = $_; # find does chdir by default, so we'll use this variable
+	# my $dir = $File::Find::dir;
+	my $dst_path;
+	my $save_path; # path to record in file
 
-	return if $file eq '.'; # omit 'dir' itself
-	# say "**** cwd: " . Cwd::getcwd;say "p $path\nf $file\nd $dir\ndst $dst_path";
-	if ($path eq $source) {
-		say "The source and destination are the same, aborting.";
-		exit EXIT_CANTCONT;
-	}
-	$_path_without_source = substr $path,(length ($source)+1);
-	$dst_path = $root . $_path_without_source;
+	return if $file eq File::Spec->curdir(); # omit 'dir' itself
+
+	# destination: $dst_path = $root + ($path - $source)
+	my @path_a = File::Spec->splitdir (
+		# omit volume name (does File::Find return it?)
+		( File::Spec->splitpath( $path, "dirs" ) )[1]
+	);
+
+	my @path_without_source = @path_a[@source_a .. $#path_a];
+	my $path_without_source = File::Spec->catdir (@path_without_source);
+	# note: keeping it simple here (catfile only), no support for VMS :)
+	$dst_path = File::Spec->catfile (@root_a, @path_without_source);
 
 	if (!$strip_root) {
 		$save_path = $dst_path;
 	}
 	else {
-		$save_path = '/' . $_path_without_source;
+		$save_path = File::Spec->catfile (
+			File::Spec->rootdir(),
+			@path_without_source
+		);
 	}
 
 	my $src_type;
@@ -379,12 +395,14 @@ sub clone_modes {
 sub do_del {
 	# easier to find bugs in code when using $source instead of $ff by accident:
 	undef $source;
-	unless ($ff =~ /.+\.\Q$ext\E$/) {
+	unless ( ($ff =~ /.+\.\Q$ext\E$/) ||
+		( File::Spec->case_tolerant() and $ff =~ /.+\.\Q$ext\E$/i ) )
+	{
 		say "The file $ff should end with .$ext.";
 		exit EXIT_WRARG;
 	}
 	unless (open $ff_fh, "<", $ff) {
-		say "I can't open $ff for reading: $!.";
+		say "Cannot open $ff for reading: $!.";
 		exit EXIT_CANTCONT;
 	}
 	my @opers; # $opers[n] = { oper => NEW...,  path => ... }
@@ -392,11 +410,10 @@ sub do_del {
 	my $line = 0;
 	my $rootdir; # unused, even not checked
 	my $my_root = "";
-	# note to Perl scripters (including myself):
-	# if (! $x eq "/") is wrong, negates $x ('not' is OK)
-	unless($root eq "/") {
-		$my_root = $root; # set root directory (all removed items will be its subdirectory)
-		if ($my_root =~ /(.+?)\/+$/) { $my_root = $1 } # rstrip /s
+
+	unless($root eq File::Spec->rootdir()) {
+		# set root directory (all items to remove are inside it)
+		$my_root = File::Spec->canonpath($root);
 		say "Root directory for the operation is $my_root.";
 	}
 
@@ -436,7 +453,13 @@ sub do_del {
 	my $path;
 	@opers = reverse @opers;
 	for (@opers) {
-		$path = $my_root . $_->{path};
+		$path = $my_root
+			# assuming it "inst" and "del" will be run on the same platform
+			# and that this "cating" is OK for the OS filesystem (also see
+			# related comment in process_file about "keeping it simple")
+			? File::Spec->catdir($my_root, $_->{path})
+			: $_->{path};
+
 		if ($_->{oper} eq 'NEWFILE') {
 			unless ($pretend) {
 				unless (unlink $path) {
@@ -593,5 +616,5 @@ sub parse_cmdline {
 		usage;
 		exit EXIT_WRARG;
 	}
-	$root = $root // "/";
+	$root = $root // File::Spec->rootdir();
 }
