@@ -3,10 +3,17 @@
 use warnings;
 use strict;
 use 5.010;
+use URI::Escape;
 use File::Find;
 use File::Copy;
 use File::Spec;
 use Cwd;
+
+$SIG{__WARN__} = sub {
+	# filter it for File::Copy too, otherwise 'no warnings ...' would do (#109104)
+	my $w = shift;
+	warn $w unless $w =~ /^Unsuccessful stat on filename containing newline/
+};
 
 use constant {
 	EXIT_OK => 0,
@@ -62,7 +69,7 @@ sub help {
 	say "Warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
-	# files with \n in name? `.' or anything wrong as src/dest? the same src/dest?
+	# `.' or anything wrong as src/dest? the same src/dest?
 	# ./adhoc-packagem.pl inst x -file x/blah -r y -> creates empty y/blah.$ext
 	say "author: Enlik";
 	say "";
@@ -86,13 +93,6 @@ my $ff; # .$ext file
 my $changes_done = 0;
 my $start_cwd = Cwd::cwd;
 
-if ($^O ne "linux") {
-	say "Sorry, your OS may not be supported.";
-	say "If it has Linux-like path naming convension, remove this check";
-	say "(you probably have a BSD or so, so you know how ;).)";
-	exit EXIT_CANTCONT;
-}
-
 parse_cmdline();
 
 if($pretend) {
@@ -107,6 +107,16 @@ if ($inst) {
 }
 else {
 	do_del();
+}
+
+#################################### misc ####################################
+
+# return "printable" string
+# '\n' changed to '?' could be confusing, so only \b is transliterated
+sub printable {
+	my $str = shift;
+	$str =~ tr/\b/?/;
+	$str;
 }
 
 #################################### inst ####################################
@@ -169,8 +179,8 @@ sub do_inst {
 
 	say $ff_fh "# $0";
 	say $ff_fh "# this is a comment.";
-	say $ff_fh "# $source " . ( $strip_root ? "(stripped)" : "") . " -> $root";
-	say $ff_fh "VERSION 1";
+	say $ff_fh "# $source" . ( $strip_root ? " (stripped)" : "") . " -> $root";
+	say $ff_fh "VERSION 2";
 	say $ff_fh "ROOTDIR " . ( $strip_root ? File::Spec->rootdir() : "$root");
 	# todo: if find reports errors "can't cd to...", it is not handled
 	find (\&process_file, $source);
@@ -230,6 +240,17 @@ sub process_file {
 		);
 	}
 
+	my %markers = (
+		dir => "NEWDIR",
+		file => "NEWFILE"
+	);
+
+	if ($save_path =~ /[\x00-\x1f%]/) {
+		$save_path = uri_escape ($save_path, "\x00-\x1f%");
+		$markers{dir}  = "NEWDIR_E";
+		$markers{file} = "NEWFILE_E";
+	}
+
 	my $src_type;
 	use constant {
 		tdir => 1,
@@ -237,6 +258,7 @@ sub process_file {
 		tsym => 3,
 		toth => 0
 	};
+
 	# must first lstat()
 	if (-l $file) {
 		$src_type = tsym;
@@ -253,7 +275,7 @@ sub process_file {
 
 	if($src_type == tdir) {
 		if ($dummy) {
-			say $ff_fh "NEWDIR $save_path";
+			say $ff_fh "$markers{dir} $save_path";
 			return;
 		}
 		if(-d $dst_path) {
@@ -262,15 +284,16 @@ sub process_file {
 		elsif(-e _) {
 			# skip also when $skip_on_conflict, because if src/d = dir
 			# and dst/d = file, copying of src/d/something will fail anyway
-			say "Error! The file $dst_path exists and it's not a directory.";
-			say "\tAborting!";
+			say "Error! The file ", printable($dst_path), " exists and is not ",
+				"a directory - aborting!";
 			_on_undo();
 			exit EXIT_ERRPROC; # with File::Find one can't abort find() it seems :/
 		}
 		else {
 			unless($pretend) {
 				unless (mkdir $dst_path) {
-					say "Error! Can't create directory $dst_path - aborting!";
+					say "Error! Can't create directory ", printable($dst_path),
+						" - aborting!";
 					say $!;
 					_on_undo();
 					exit EXIT_ERRPROC;
@@ -278,29 +301,31 @@ sub process_file {
 				my $ret = clone_modes($file, $dst_path);
 				if ($ret < 0) {
 					given($ret) {
-						say "Warning: can't stat $file: $!" when (-1);
-						say "Warning: can't change mode for $file: $!" when (-2);
-						say "Warning: can't change owner/group for $file: $!" when (-3);
+						my $tmp = printable($file);
+						say "Warning: can't stat $tmp: $!" when (-1);
+						say "Warning: can't change mode for $tmp: $!" when (-2);
+						say "Warning: can't change owner/group for $tmp: $!" when (-3);
 					}
 				}
 			}
 			$changes_done = 1;
-			say $ff_fh "NEWDIR $save_path";
+			say $ff_fh "$markers{dir} $save_path";
 		}
 	}
 	elsif($src_type == treg || $src_type == tsym) {
 		if ($dummy) {
-			say $ff_fh "NEWFILE $save_path";
+			say $ff_fh "$markers{file} $save_path";
 			return;
 		}
 		if(-d $dst_path) {
 			if($skip_on_conflict) {
-				say "Info: skipping file $file: destination already ",
-					"exists. Destination $dst_path is a directory or a symbolic ",
-					"link pointing to a directory.";
+				say "Info: skipping file ", printable($file), ": destination already ",
+					"exists. Destination ", printable($dst_path), " is a directory ",
+					"or a symbolic link pointing to a directory.";
 			}
 			else {
-				say "Error! The file $dst_path exists and IS a directory";
+				say "Error! The file ", printable($dst_path), " exists and IS ",
+					"a directory";
 				say "\t(or a symbolic link pointing to a directory)";
 				say "\tbut source file is not a directory. Aborting!";
 				_on_undo();
@@ -309,12 +334,12 @@ sub process_file {
 		}
 		elsif (-e _) {
 			if($skip_on_conflict) {
-				say "Info: skipping file $file: destination already ",
-					"exists. Destination $dst_path is a file.";
+				say "Info: skipping file ", printable($file), ": destination ",
+					"already exists. Destination ", printable($dst_path), " is a file.";
 			}
 			else {
 				# let's yell a bit
-				say "Error! The file $dst_path exists!";
+				say "Error! The file ", printable($dst_path), " exists!";
 				say "\tI'm not going to overwrite it. Aborting!";
 				_on_undo();
 				exit EXIT_ERRPROC;
@@ -325,17 +350,19 @@ sub process_file {
 				# Do it!
 				if($src_type == treg) {
 					unless (copy $file, $dst_path) {
-						say "Error! Can't copy file $path to $dst_path - aborting!";
-						say "\t",$!;
+						say "Error! Can't copy file ", printable($path), " to ",
+							printable($dst_path), " - aborting!";
+						say $!;
 						_on_undo();
 						exit EXIT_ERRPROC;
 					}
 					my $ret = clone_modes($file, $dst_path);
 					if ($ret < 0) {
 						given($ret) {
-							say "Warning: can't stat $file: $!" when (-1);
-							say "Warning: can't change mode for $file: $!" when (-2);
-							say "Warning: can't change owner/group for $file: $!" when (-3);
+							my $tmp = printable($file);
+							say "Warning: can't stat $tmp: $!" when (-1);
+							say "Warning: can't change mode for $tmp: $!" when (-2);
+							say "Warning: can't change owner/group for $tmp: $!" when (-3);
 						}
 					}
 				}
@@ -343,15 +370,15 @@ sub process_file {
 					my $symlink_dest = readlink $file;
 					unless (defined $symlink_dest) {
 						# It's a symlink and can't read it?
-						say "Error, can't read destination of symbolic link $file ",
-							" - aborting!";
+						say "Error, can't read destination of symbolic link ",
+							printable($file), " - aborting!";
 						say $!;
 						_on_undo();
 						exit EXIT_ERRPROC;
 					}
 					unless (symlink ($symlink_dest, $dst_path)) {
-						say "Error, can't make a symbolic link $dst_path ",
-							"to $symlink_dest - aborting!";
+						say "Error, can't make a symbolic link ", printable($dst_path),
+							" to ", printable($symlink_dest), " - aborting!";
 						say $!;
 						_on_undo();
 						exit EXIT_ERRPROC;
@@ -359,12 +386,12 @@ sub process_file {
 				}
 			}
 			$changes_done = 1;
-			say $ff_fh "NEWFILE $save_path";
+			say $ff_fh "$markers{file} $save_path";
 		}
 	}
 	else {
-		say "Warning, file $file is not a regular file, directory or symbolic ",
-			"link and was omitted.";
+		say "Warning, file ", printable($file), " is not a regular file, directory ",
+			"or a symbolic link and was omitted.";
 	}
 }
 
@@ -406,7 +433,7 @@ sub do_del {
 		exit EXIT_CANTCONT;
 	}
 	my @opers; # $opers[n] = { oper => NEW...,  path => ... }
-	my $version;
+	my $version = "";
 	my $line = 0;
 	my $rootdir; # unused, even not checked
 	my $my_root = "";
@@ -423,9 +450,10 @@ sub do_del {
 		next if /^#/; # classic
 		if($_ =~ /^VERSION (.+)/) {
 			$version = $1;
-			if($version != 1) {
-				say "Error, wrong version! Maybe you have old tool?";
-				say "Only file with VERSION 1 are supported.";
+			if($version ne 1 and $version ne 2) {
+				say qq{Error, wrong version "$version"! Maybe you have an old tool?};
+				say "Only files with VERSION 1 and 2 are supported.";
+				say "visit https://github.com/Enlik/adhoc-packagem";
 				say "$_ at line $line";
 				exit EXIT_ERRPROC;
 			}
@@ -438,6 +466,9 @@ sub do_del {
 				exit EXIT_ERRPROC;
 			}
 			push @opers, { oper => $1, path => $2 };
+		}
+		elsif ($_ =~ /^(NEWFILE|NEWDIR)_E (.+)/ and $version eq 2) {
+			push @opers, { oper => $1, path => uri_unescape ($2) };
 		}
 		elsif ($_ =~ /^ROOTDIR (.+)/) {
 			$rootdir = $1;
@@ -453,22 +484,23 @@ sub do_del {
 	my $path;
 	@opers = reverse @opers;
 	for (@opers) {
-		$path = $my_root
+		$path =
 			# assuming it "inst" and "del" will be run on the same platform
 			# and that this "cating" is OK for the OS filesystem (also see
 			# related comment in process_file about "keeping it simple")
+			$my_root
 			? File::Spec->catdir($my_root, $_->{path})
 			: $_->{path};
 
 		if ($_->{oper} eq 'NEWFILE') {
 			unless ($pretend) {
 				unless (unlink $path) {
-					say "Warning: can't remove file $path.";
+					say "Warning: can't remove file ", printable($path), ".";
 					say "\t$!";
 				}
 			}
 			else {
-				say "[FILE] " . $path;
+				say "[FILE] ", printable($path);
 				say "\tInfo: this file doesn't exist or is not a regular file."
 					unless -f $path;
 			}
@@ -476,14 +508,14 @@ sub do_del {
 		elsif ($_->{oper} eq 'NEWDIR') {
 			unless($pretend) {
 				unless (rmdir $path) {
-					say "Warning: can't remove directory $path.";
+					say "Warning: can't remove directory ", printable($path), ".";
 					say "\t$!";
 					say "\tMaybe it wasn't empty because something was added";
 					say "\tto it after using this tool.";
 				}
 			}
 			else {
-				say " [DIR] " . $path;
+				say " [DIR] ", printable($path);
 				say "\tInfo: this directory doesn't exist or the item is not a directory."
 					unless -d $path;
 			}
