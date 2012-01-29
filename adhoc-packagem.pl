@@ -18,7 +18,7 @@ $SIG{__WARN__} = sub {
 use constant {
 	EXIT_OK => 0,
 	EXIT_WRARG => 1,
-	EXIT_CANTCONT => 2, # can't continue: unsupported OS or some other initial checks failed
+	EXIT_CANTCONT => 2, # can't continue: some initial checks failed
 	EXIT_ERRPROC => 3 # error during processing files
 };
 
@@ -69,7 +69,7 @@ sub help {
 	say "Warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
-	# `.' or anything wrong as src/dest? the same src/dest?
+	# The same src/dest? ./adhoc-packagem.pl inst ../adhoc-packagem/ -r d?
 	# ./adhoc-packagem.pl inst x -file x/blah -r y -> creates empty y/blah.$ext
 	say "author: Enlik";
 	say "";

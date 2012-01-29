@@ -25,8 +25,18 @@ Error! The file (path here...) exists!
 	I'm not going to overwrite it. Aborting!
 No changes were done. s.insfiles is not needed and will be removed.
 - like this).
+Another notable case is when destination is a directory inside source (for
+example when using: `inst .. -r d'). In this case this tool could attempt to
+copy d/ into d/ infinitely (it's when cp(1) warns:
+cp: cannot copy a directory, `..', into itself, `d/').
+(This will going to be fixed at some point.) Otherwise this tool works very well.
 
 See also SPECIAL FILES and OTHER INFO for more details.
+
+PURPOSE
+It can be used when you want to copy directory with some app to /usr/local
+(or even /usr or /; the destination path "/" is the default) and then remove
+it easily.
 
 OPTIONS
 Command line arguments must occur after source directory (inst) or .insfiles (del).
@@ -114,11 +124,6 @@ For example:
 # src.insfiles wouldn't contain the full path to "dst"; to remove files:
 ./adhoc-packagem.pl del haha.insfiles -r /opt/dst.
 
-PURPOSE
-It can be used when you want to copy directory with some app to /usr/local
-(or even /usr or /; the destination path "/" is the default) and then remove
-it easily.
-
 SPECIAL FILES
 A note about non-regular files on "inst".
 Symbolic links: a new symbolic link is made in the destination directory, and new
@@ -176,6 +181,21 @@ overwritten" etc. above),
 - if such a file/directory does not exist anymore, tells user about it,
 - a non-empty directory would not be removed, but in this mode user won't be
 notified about this fact.
+
+PORTABILITY AND NOTES FOR NON-UNIX OPERATING SYSTEMS
+It has been tested and proved itself to work on a GNU/Linux system and MS Windows.
+It should work on any operating system that doesn't have different notation
+for file and directory in a path.
+A .insfiles file records paths using "native" notation (with slashes on Linux,
+backslashes on Windows... as path separator) and thus it's not intended
+a .insfiles file generated on one OS to "work" on another that uses different
+path naming convention. (However a .insfiles file generated on Linux should
+work on Windows.)
+"Volume" is not stored, so for example "C:\directory\subdir" is stored as
+"\directory\subdir". It means that you may need to change working drive first
+with "del". (Option -r with drive letter should work, but it's not tested so not
+recommended.) With "inst" you must change drive to the one where you want
+files to be placed, because drive letter specified with -r is ignored.
 
 The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
 by Enlik
