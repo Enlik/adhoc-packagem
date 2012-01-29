@@ -25,8 +25,6 @@ use constant {
 my $ext = "insfiles";
 sub usage {
 	my $ishelp = shift;
-	# inst [-p|-dummy] /home/x/bash [-r /tmp] [-file insfile] [-nco] [-sc]
-	# del [-p] insfile [-r /tmp]
 	say "usage: inst [-p|-dummy] <source_dir> ",
 		"[-r <root_path>] [-file <output>[.$ext]] [-nco] [-sc] [-strip]";
 	say "or:    del [-p] <input>.$ext [-r <root_path>]";
@@ -197,7 +195,9 @@ sub do_inst {
 # to be used with inst
 sub _on_undo {
 	if ($changes_done) {
-		say "REMEMBER TO UNDO CHANGES MANUALLY using $0 del $ff";
+		my $feedback_cmd = "$0 del '$ff'";
+		$feedback_cmd .= " -r '$root'" if $strip_root;
+		say "REMEMBER TO UNDO CHANGES MANUALLY using $feedback_cmd";
 		close $ff_fh;
 	}
 	else {
