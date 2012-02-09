@@ -302,9 +302,15 @@ sub process_file {
 				if ($ret < 0) {
 					given($ret) {
 						my $tmp = printable($file);
-						say "Warning: can't stat $tmp: $!" when (-1);
-						say "Warning: can't change mode for $tmp: $!" when (-2);
-						say "Warning: can't change owner/group for $tmp: $!" when (-3);
+						when (-1) {
+							say "Warning: can't stat $tmp: $!"
+						}
+						when (-2) {
+							say "Warning: can't change mode for $tmp: $!"
+						}
+						when (-3) {
+							say "Warning: can't change owner/group for $tmp: $!"
+						}
 					}
 				}
 			}
@@ -360,9 +366,15 @@ sub process_file {
 					if ($ret < 0) {
 						given($ret) {
 							my $tmp = printable($file);
-							say "Warning: can't stat $tmp: $!" when (-1);
-							say "Warning: can't change mode for $tmp: $!" when (-2);
-							say "Warning: can't change owner/group for $tmp: $!" when (-3);
+							when (-1) {
+								say "Warning: can't stat $tmp: $!"
+							}
+							when (-2) {
+								say "Warning: can't change mode for $tmp: $!"
+							}
+							when (-3) {
+								say "Warning: can't change owner/group for $tmp: $!"
+							}
 						}
 					}
 				}
