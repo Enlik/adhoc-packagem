@@ -67,7 +67,7 @@ sub help {
 	say "Warning: it's not designed to be completely error-prone";
 	say "esp. if one gives wrong args (source or destination).";
 	say "";
-	# The same src/dest? ./adhoc-packagem.pl inst ../adhoc-packagem/ -r d?
+	# todo [src is subdir dest] ./adhoc-packagem.pl inst ../adhoc-packagem/ -r d?
 	# ./adhoc-packagem.pl inst x -file x/blah -r y -> creates empty y/blah.$ext
 	say "author: Enlik";
 	say "";
@@ -126,6 +126,7 @@ sub do_inst {
 	# we don't want volume names
 	$root =   ( File::Spec->splitpath( $root,   "dirs" ) )[1];
 	$source = ( File::Spec->splitpath( $source, "dirs" ) )[1];
+
 	if (! -d $source) {
 		say "Error, source \"$source\" doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT;
@@ -134,6 +135,44 @@ sub do_inst {
 		say "Error, destination $root doesn't exist or is not a dir.";
 		exit EXIT_CANTCONT unless $dummy;
 	}
+	{
+		# check if they point to the same location
+		my $same = 0;
+
+		# dev/inode test (below) doesn't work on some platforms, so
+		# we're checking also this; dev/inode test is done too to catch
+		# more cases (mount -o bind)
+		my $root_real = Cwd::realpath($root);
+		my $src_real  = Cwd::realpath($source);
+		if ($root_real eq $src_real) {
+			$same = 1;
+			goto L_ERR_DIRS_CHECKED_END;
+		}
+
+		my ($root_dev, $root_ino) = stat ($root);
+		my ($src_dev,  $src_ino)  = stat ($source);
+		# check for success first
+		if (defined $root_dev and defined $src_dev) {
+			if ($root_dev == $src_dev
+				&& $root_ino == $src_ino)
+			{
+				$same = 1;
+				goto L_ERR_DIRS_CHECKED_END;
+			}
+		}
+		else {
+			say "Error, can't stat() directorie(s).";
+			exit EXIT_CANTCONT;
+		}
+
+		L_ERR_DIRS_CHECKED_END:
+		if ($same) {
+			say qq{Error, source "$source" and destination "$root" point the},
+				qq{ same directory.};
+			exit EXIT_CANTCONT;
+		}
+	}
+
 	@source_a = File::Spec->splitdir($source);
 	@root_a   = File::Spec->splitdir($root);
 	say "info: source is: $source";
@@ -537,6 +576,7 @@ sub do_del {
 }
 
 ################################ parse_cmdline ###############################
+
 
 sub parse_cmdline {
 	my $oper = shift @ARGV;

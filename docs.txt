@@ -14,22 +14,16 @@ del [-p] <input>.insfiles [-r <root_path>]
 
 PREFACE
 Currently it's not very smart, but it does the job.
-It does no proper check whether the source and destination paths are meaningful
-(for example it does not check if real path of source and destination are
-different:
- ./adhoc-packagem.pl inst s -r s
-info: source is: s
-info: destination is: /(path here)/s/
-.insfiles file is: s.insfiles
-Error! The file (path here...) exists!
-	I'm not going to overwrite it. Aborting!
-No changes were done. s.insfiles is not needed and will be removed.
-- like this).
+When an .insfiles file in source directory is requested, an empty .insfiles
+is created also in destination directory. (The "real" file under name specified
+with -file option is created and valid, so it is not a big problem.)
+It can be reproduced with this command:
+'./adhoc-packagem.pl inst tst -file tst/x -r dest'.
 Another notable case is when destination is a directory inside source (for
 example when using: `inst .. -r d'). In this case this tool could attempt to
 copy d/ into d/ infinitely (it's when cp(1) warns:
 cp: cannot copy a directory, `..', into itself, `d/').
-(This will going to be fixed at some point.) Otherwise this tool works very well.
+(This will be fixed at some point.) Otherwise this tool works very well.
 
 See also SPECIAL FILES and OTHER INFO for more details.
 
@@ -199,6 +193,6 @@ files to be placed, because drive letter specified with -r is ignored.
 
 The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
 by Enlik
-January/April/December 2011, January 2012
+January/April/December 2011, January/December 2012
 
 End of file.
