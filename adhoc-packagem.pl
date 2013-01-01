@@ -210,7 +210,8 @@ sub do_inst {
 	# chdir $source or die "Can't change dir to $source: $!\n";
 
 	unless (open ($ff_fh, ">", $ff)) {
-		say "Error, can't open .$ext file for writing.";
+		say "Error, can't open .$ext file for writing",
+			" (you can specify different path using -file).";
 		exit EXIT_CANTCONT;
 	}
 
