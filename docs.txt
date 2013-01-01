@@ -19,6 +19,7 @@ is created also in destination directory. (The "real" file under name specified
 with -file option is created and valid, so it is not a big problem.)
 It can be reproduced with this command:
 './adhoc-packagem.pl inst tst -file tst/x -r dest'.
+
 Another notable case is when destination is a directory inside source (for
 example when using: `inst .. -r d'). In this case this tool could attempt to
 copy d/ into d/ infinitely (it's when cp(1) warns:
@@ -42,6 +43,7 @@ a "source_dir" argument.
 * inst
 inst [-p|-dummy] <source_dir> [-r <root_path>] [-file <output>[.insfiles]]
   [-nco] [-sc] [-strip]
+
 Copy files from source_dir to root_path, or / if root_path is not specified.
 Use -file output to specify output .insfiles (extension will be appended if
 necessary). Default .insfiles is: cleaned_source_dir.insfile, where
@@ -70,10 +72,11 @@ don't need this.
 Run in pretend mode. See PRETEND MODE.
 
 * -dummy
-When in dummy mode, nothing is copied to destination directory. Only a .insfiles
+When in dummy mode, nothing is copied to destination directory. Only an .insfiles
 file is created, without checking for any conflicts that might occur without
 this option.
-This can be useful to recreate a .insfiles after it has been lost using only
+
+This can be useful to recreate an .insfiles after it has been lost using only
 original source directory. Note that such .insfiles file will be different from
 the original one if for example previous "inst" was run with option "-sc" and
 file collisions were detected and thus not recorded in the .insfiles content,
@@ -83,6 +86,7 @@ but these files will be recorded now with -dummy option used.
 Only allowed with "inst".
 "No change ownership" - don't alter ownership of files and directories that
 has been copied.
+
 This option is useful when you (as root) "install" files that belong to another
 user and want the files in destination path to be owned by root.
 Another case when this option is useful is when you have no permission to
@@ -103,19 +107,21 @@ a case copying will abort, as usual. The reason: if we have file structure
 in source directory like this: abc/def (abc is a directory) and in destination:
 abc (abc is a file), copying the file abc/def will fail anyway, because there
 is no abc directory to copy to.
-A file that has been skipped is not recorded in a .insfiles file and will not
+
+A file that has been skipped is not recorded in an .insfiles file and will not
 be removed when "del" command is used.
 
 * -file
-Specify alternative name (path) to a .insfiles file. Most useful with "inst",
+Specify alternative name (path) to an .insfiles file. Most useful with "inst",
 but can be used with "del", too. If used multiple times, the last one will be used.
 
 * -strip
-If this option is used, root directory saved in a .insfiles is set to "/".
+If this option is used, root directory saved in an .insfiles is set to "/".
 In other words, the remaining part is "stripped". This only affects contents
 of the file with list; files are installed as normal. This option can be useful
 when you install to a chroot. To remove files from the same location as before,
 the '-r' argument can be used with "del".
+
 For example:
 ./adhoc-packagem.pl inst src -r /opt/dst -file haha.insfiles -strip
 # src.insfiles wouldn't contain the full path to "dst"; to remove files:
@@ -135,22 +141,29 @@ OTHER INFO
 It tries to operate safely. If a file already exists it won't be overwritten
 (in such a case the process will abort unless "-sc" is used - all changes can be
 undone with "del" command).
+
 However, if a directory (or a symbolic link that points to a directory) already
 exists, it will be used. Such a directory (or symbolic link) won't be removed
 with "del" option.
+
 If a source item is a directory and a file with the same name exists in destination
 directory, the process is aborted.
+
 If a source item is not a directory and a directory (or a symbolic link pointing
 to a directory) with the same name exists in destination directory, the process
 is aborted unless "-sc" option is used.
+
 It tries to change mode (writable, executable etc.) of created item to match the
 original one's mode (note: not for symbolic links; not for directories that already
 exist). On success, tries to set the same UID and GID, too (same note as above),
 unless the -nco ("no change ownership") option is specified.
+
 If any of these two operations fail, a warning is issued, but the process
 is not aborted.
+
 Access or modification time of created item is set as-is (usually it will be
-"now"). 
+"now").
+
 If a file cannot be copied or a symbolic link cannot be made, a message is
 printed on screen and the process is aborted.
 If none of these options are provided: -p, -sc, -dummy, then if nothing has been
@@ -167,13 +180,13 @@ If an item was already removed, a warning is issued.
 PRETEND MODE
 Pretend mode (-p) is a simple way to check of what would be done.
 * with "inst":
-- generates a .insfiles,
+- generates an .insfiles,
 - checks if there are any conflicts ("If a file already exists it won't be
 overwritten" etc. above),
 - does not check for permissions or another problems that can occur during copying;
 
 * with "del":
-- reads a .insfiles (with normal check whether it's OK),
+- reads an .insfiles (with normal check whether it's OK),
 - writes what file (or maybe directory - see below) would be removed,
 - if such a file/directory does not exist anymore, tells user about it,
 - a non-empty directory would not be removed, but in this mode user won't be
@@ -181,18 +194,16 @@ notified about this fact.
 
 PORTABILITY AND NOTES FOR NON-UNIX OPERATING SYSTEMS
 It has been tested and proved itself to work on a GNU/Linux system and MS Windows.
-It should work on any operating system that doesn't have different notation
-for file and directory in a path.
-A .insfiles file records paths using "native" notation (with slashes on Linux,
-backslashes on Windows... as path separator) and thus it's not intended
-a .insfiles file generated on one OS to "work" on another that uses different
-path naming convention. (However a .insfiles file generated on Linux should
-work on Windows.)
+Systems using some kind of exotic path notation are not supported.
+An .insfiles file stores paths using path separators native to the operating
+system (slashes on Linux and backslashes on Windows). It means that an .insfiles
+file generated on Linux should work on Windows, but the opposite is not true.
+
 "Volume" is not stored, so for example "C:\directory\subdir" is stored as
 "\directory\subdir". It means that you may need to change working drive first
 with "del". (Option -r with drive letter should work, but it's not tested so not
 recommended.) With "inst" you must change drive to the one where you want
-files to be placed, because drive letter specified with -r is ignored.
+files to be placed, because with "inst" drive letter specified with -r is ignored.
 
 The tool can be found currently here: https://github.com/Enlik/adhoc-packagem.
 by Enlik

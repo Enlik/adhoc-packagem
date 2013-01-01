@@ -251,7 +251,7 @@ sub _on_undo {
 }
 
 sub process_file {
-	my $path = $File::Find::name;
+	my $src_path = $File::Find::name;
 	my $file = $_; # find does chdir by default, so we'll use this variable
 	# my $dir = $File::Find::dir;
 	my $dst_path;
@@ -259,25 +259,46 @@ sub process_file {
 
 	return if $file eq File::Spec->curdir(); # omit 'dir' itself
 
-	# destination: $dst_path = $root + ($path - $source)
-	my @path_a = File::Spec->splitdir (
-		# omit volume name (does File::Find return it?)
-		( File::Spec->splitpath( $path, "dirs" ) )[1]
-	);
+	{
+		# build destination
+		# note: VMS, Mac 9 = nope
+		# destination: $dst_path = $root + ($src_path - $source)
 
-	my @path_without_source = @path_a[@source_a .. $#path_a];
-	my $path_without_source = File::Spec->catdir (@path_without_source);
-	# note: keeping it simple here (catfile only), no support for VMS :)
-	$dst_path = File::Spec->catfile (@root_a, @path_without_source);
+		my $cleanup = sub {
+			my $s = File::Spec->canonpath($source);
+			return ( File::Spec->splitpath( $s, "dirs" ) )[1];
+		};
+		state $source_canon = $cleanup->();
 
-	if (!$strip_root) {
-		$save_path = $dst_path;
-	}
-	else {
-		$save_path = File::Spec->catfile (
-			File::Spec->rootdir(),
-			@path_without_source
+		my @src_path_a = File::Spec->splitdir (
+			# omit volume name (does File::Find return it?)
+			( File::Spec->splitpath( $src_path, "dirs" ) )[1]
 		);
+
+		my @path_without_source;
+
+		if ($source_canon eq File::Spec->rootdir) {
+			# @source_a = ('', '') in this case
+			# without this hack we would chop off too much :(
+			@path_without_source = @src_path_a[1 .. $#src_path_a];
+		}
+		else {
+			@path_without_source = @src_path_a[@source_a .. $#src_path_a];
+		}
+
+		my $path_without_source = File::Spec->catdir (@path_without_source);
+
+		$dst_path = File::Spec->catfile (@root_a, @path_without_source);
+
+		if (!$strip_root) {
+			$save_path = $dst_path;
+		}
+		else {
+			$save_path = File::Spec->catfile (
+				File::Spec->rootdir(),
+				@path_without_source
+			);
+		}
 	}
 
 	my %markers = (
@@ -370,7 +391,7 @@ sub process_file {
 					"or a symbolic link pointing to a directory.";
 			}
 			else {
-				say "Error! The file ", printable($dst_path), " exists and IS ",
+				say "Error! Destination ", printable($dst_path), " exists and IS ",
 					"a directory";
 				say "\t(or a symbolic link pointing to a directory)";
 				say "\tbut source file is not a directory. Aborting!";
@@ -396,7 +417,7 @@ sub process_file {
 				# Do it!
 				if($src_type == treg) {
 					unless (copy $file, $dst_path) {
-						say "Error! Can't copy file ", printable($path), " to ",
+						say "Error! Can't copy file ", printable($src_path), " to ",
 							printable($dst_path), " - aborting!";
 						say $!;
 						_on_undo();
@@ -538,8 +559,7 @@ sub do_del {
 	for (@opers) {
 		$path =
 			# assuming it "inst" and "del" will be run on the same platform
-			# and that this "cating" is OK for the OS filesystem (also see
-			# related comment in process_file about "keeping it simple")
+			# and that this "cating" is OK for the OS filesystem
 			$my_root
 			? File::Spec->catdir($my_root, $_->{path})
 			: $_->{path};
