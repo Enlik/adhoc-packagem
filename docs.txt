@@ -51,6 +51,9 @@ the text "FILES." is prepended to the file name. Examples follow.
 /tmp/src -> /tmp/src.insfiles
 /tmp/.src -> /tmp/FILES.src.insfiles
 
+Argument source_dir must be a directory; root_path can be a directory or
+a symbolic link pointing to a directory.
+
 * del
 del [-p] <input>.insfiles [-r <root_path>]
 Reads input.insfiles and removes files and non-empty directories in reversed order.

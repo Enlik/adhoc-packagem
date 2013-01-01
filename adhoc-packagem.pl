@@ -127,12 +127,12 @@ sub do_inst {
 	$root =   ( File::Spec->splitpath( $root,   "dirs" ) )[1];
 	$source = ( File::Spec->splitpath( $source, "dirs" ) )[1];
 
-	if (! -d $source) {
-		say "Error, source \"$source\" doesn't exist or is not a dir.";
+	if (! -d $source or -l $source) {
+		say qq{Error, source "$source" doesn't exist or is not a directory.};
 		exit EXIT_CANTCONT;
 	}
 	if (! -d $root) {
-		say "Error, destination $root doesn't exist or is not a dir.";
+		say qq{Error, destination "$root" doesn't exist or is not a directory.};
 		exit EXIT_CANTCONT unless $dummy;
 	}
 	{
