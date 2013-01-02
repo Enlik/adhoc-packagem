@@ -517,6 +517,19 @@ sub do_del {
 		say "Root directory for the operation is $my_root.";
 	}
 
+	my $check_ver_specified;
+	$check_ver_specified = sub {
+		if ($version eq "") {
+			say "Error, no VERSION specified.";
+			say "There should be a line with VERSION string.";
+			say "at line $line";
+			exit EXIT_ERRPROC;
+		}
+		else {
+			$check_ver_specified = sub { }
+		}
+	};
+
 	while (<$ff_fh>) {
 		$line++;
 		chomp;
@@ -532,23 +545,23 @@ sub do_del {
 			}
 		}
 		elsif ($_ =~ /^(NEWFILE|NEWDIR) (.+)/) {
-			unless ($version) {
-				say "Error, no VERSION specified.";
-				say "There should be a line VERSION (version).";
-				say "at line $line";
-				exit EXIT_ERRPROC;
-			}
+			$check_ver_specified->();
 			push @opers, { oper => $1, path => $2 };
 		}
 		elsif ($_ =~ /^(NEWFILE|NEWDIR)_E (.+)/ and $version eq 2) {
+			$check_ver_specified->();
 			push @opers, { oper => $1, path => uri_unescape ($2) };
 		}
 		elsif ($_ =~ /^ROOTDIR (.+)/) {
+			$check_ver_specified->();
 			$rootdir = $1;
 		}
 		else {
 			say "Parse error at line $line.";
 			say "Wrong line is: $_.";
+			if ($version eq "") {
+				say "No VERSION was specified."
+			}
 			exit EXIT_ERRPROC;
 		}
 	}
