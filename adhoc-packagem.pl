@@ -27,7 +27,7 @@ sub usage {
 	my $ishelp = shift;
 	say "usage: inst [-p|-dummy] <source_dir> ",
 		"[-r <root_path>] [-file <output>[.$ext]] [-nco] [-sc] [-strip]";
-	say "or:    del [-p] <input>.$ext [-r <root_path>]";
+	say "or:    del [-p] <input>.$ext [-allow-del-from-root] [-r <root_path>]";
 	say "or:    [-h|--help]";
 	say "";
 	say "examples:";
@@ -47,6 +47,8 @@ sub usage {
 	say "-nco   \tno change ownership";
 	say "-sc    \tskip item on conflict";
 	say "-strip \t\"strip\" root (destination) path from a .$ext file";
+	say "-allow-del-from-root (safety guard) proceed with removal when root ",
+		"directory for the operation is ", File::Spec->rootdir();
 	say "\n(For details about usage (and other informations) see the file \"docs\".)";
 	say "Use --help to get some more info." unless defined $ishelp;
 }
@@ -80,6 +82,7 @@ my $dummy = 0; # 0 or 1
 my $change_ownership = 1; # 0 or 1
 my $skip_on_conflict = 0; # 0 or 1
 my $strip_root = 0; # 0 or 1
+my $allow_del_from_root = 0; # 0 or 1
 my $source;
 my @source_a;
 my $root; # absolute destination path
@@ -508,7 +511,7 @@ sub do_del {
 	my @opers; # $opers[n] = { oper => NEW...,  path => ... }
 	my $version = "";
 	my $line = 0;
-	my $rootdir; # unused, even not checked
+	my $rootdir;
 	my $my_root = "";
 
 	unless($root eq File::Spec->rootdir()) {
@@ -554,7 +557,7 @@ sub do_del {
 		}
 		elsif ($_ =~ /^ROOTDIR (.+)/) {
 			$check_ver_specified->();
-			$rootdir = $1;
+			$rootdir = File::Spec->canonpath($1);
 		}
 		else {
 			say "Parse error at line $line.";
@@ -566,6 +569,28 @@ sub do_del {
 		}
 	}
 	close $ff_fh;
+
+	unless (defined $rootdir) {
+		say "Error, no ROOTDIR specified.";
+		say "There should be a line with ROOTDIR string.";
+		exit EXIT_ERRPROC;
+	}
+
+	unless ($allow_del_from_root) {
+		my ($_rootdir, $_my_root) = ($rootdir, $my_root);
+		$_rootdir = Cwd::realpath($rootdir) if -e $rootdir;
+		$_my_root = Cwd::realpath($my_root) if $my_root ne "" and -e $my_root;
+
+		if ($_rootdir eq File::Spec->rootdir()
+			and ($_my_root eq File::Spec->rootdir() or $_my_root eq ""))
+		{
+			say "!!! Root directory for the operation is $_rootdir.";
+			say "As a safety guard, -allow-del-from-root option is required.";
+			say q{(It may be changed in the future to require this option only},
+				q{ if -strip was used when using "inst".)};
+			exit EXIT_CANTCONT;
+		}
+	}
 
 	my $path;
 	@opers = reverse @opers;
@@ -723,6 +748,14 @@ sub parse_cmdline {
 					exit EXIT_WRARG;
 				}
 				$strip_root = 1;
+			}
+			when ("-allow-del-from-root") {
+				if ($inst) {
+					say "Error, -allow-del-from-root can only be used with",
+						q{ "del".};
+					exit EXIT_WRARG;
+				}
+				$allow_del_from_root = 1;
 			}
 			say "Error: too much or wrong parameters ($arg).\n";
 			usage;

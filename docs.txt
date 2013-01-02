@@ -57,12 +57,17 @@ Argument source_dir must be a directory; root_path can be a directory or
 a symbolic link pointing to a directory.
 
 * del
-del [-p] <input>.insfiles [-r <root_path>]
+del [-p] <input>.insfiles [-allow-del-from-root] [-r <root_path>]
 Reads input.insfiles and removes files and non-empty directories in reversed order.
 If you specify -r root_path, it will be appended to all items. This could
 be useful if you work with chroots. Use -p to see what resulting paths would look
 like.
 Note: additional -file input2.insfiles is permitted and will override input.insfiles.
+
+When root directory for the operation is / (determined from ROOTDIR saved in an
+.insfiles file) and it is not overridden with -r, the process is aborted
+unless -allow-del-from-root is specified. See description of -allow-del-from-root
+for the rationale.
 
 * -h (or --help)
 Prints some blah - informations and usage. If you are reading this file you
@@ -126,6 +131,26 @@ For example:
 ./adhoc-packagem.pl inst src -r /opt/dst -file haha.insfiles -strip
 # src.insfiles wouldn't contain the full path to "dst"; to remove files:
 ./adhoc-packagem.pl del haha.insfiles -r /opt/dst.
+
+-allow-del-from-root
+Only allowed with "del".
+When root directory for the operation is / (determined from ROOTDIR saved in an
+.insfiles file) and it is not overridden with -r, the process is aborted.
+This option has been introduced as a safety guard helpful when -strip was used
+with "inst".
+
+Consider such example:
+./adhoc-packagem inst /mnt/chroot -r /mnt/chroot2 -strip
+because -strip was used, the .insfiles file contains entries without preceeding
+/mnt/chroot (see description of the -strip option above).
+Then the same person wants to delete /mnt/chroot2. The correct invocation is:
+./adhoc-packagem del data.insfiles -r /mnt/chroot2
+but it is not difficult to forget about -r and execute this:
+./adhoc-packagem del data.insfiles
+which will delete data from /.
+
+It may be changed in the future to require this option only if -strip was used,
+like shown above, because it is mostly helpful only in this case.
 
 SPECIAL FILES
 A note about non-regular files on "inst".
